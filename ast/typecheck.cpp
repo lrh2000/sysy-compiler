@@ -267,8 +267,11 @@ void AstEmptyStmt::type_check(AstContext *ctx)
 
 const AstType *AstFuncArg::type_check(AstContext *ctx)
 {
-  if (indices.size() == 0)
-    return AstType::mk_int(false);
+  if (indices.size() == 0) {
+    auto ty = AstType::mk_int(false);
+    ctx->def_set_type(def, ty);
+    return ty;
+  }
 
   std::vector<unsigned int> shape;
   for (size_t i = 1; i < indices.size(); ++i)

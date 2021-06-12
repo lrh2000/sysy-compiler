@@ -1,6 +1,7 @@
-#include <iostream>
 #include "mir.h"
 #include "context.h"
+#include "../asm/asm.h"
+#include "../asm/builder.h"
 
 bool MirStmt::is_func_call(void) const
 {
@@ -136,14 +137,7 @@ void MirSymbolAddrStmt::codegen(
     const MirFuncContext *ctx, unsigned int id) const
 {
   Register rd = ctx->get_reg(std::make_pair(id, 0u));
-
-  std::cout << "  la "
-            << rd
-            << ", "
-            << name.to_string()
-            << (offset >= 0 ? "+" : "")
-            << offset
-            << "\n";
+  ctx->get_builder()->mk_load_addr_inst(rd, name, offset);
 }
 
 void MirArrayAddrStmt::codegen(
@@ -155,22 +149,12 @@ void MirArrayAddrStmt::codegen(
   offset += ctx->get_array_offset(this->id);
 
   if (offset <= 2047 && offset >= -2048) {
-    std::cout << "  addi "
-              << rd
-              << ", sp, "
-              << offset
-              << "\n";
+    ctx->get_builder()->mk_binary_imm_inst(
+        AsmBinaryImmOp::Add, rd, Register::SP, offset);
   } else {
-    std::cout << "  li "
-              << rd
-              << ", "
-              << offset
-              << "\n";
-    std::cout << "  add "
-              << rd
-              << ", "
-              << rd
-              << ", sp\n";
+    ctx->get_builder()->mk_load_imm_inst(rd, offset);
+    ctx->get_builder()->mk_binary_inst(
+        AsmBinaryOp::Add, rd, rd, Register::SP);
   }
 }
 
@@ -178,12 +162,7 @@ void MirImmStmt::codegen(
     const MirFuncContext *ctx, unsigned int id) const
 {
   Register rd = ctx->get_reg(std::make_pair(id, 0u));
-
-  std::cout << "  li "
-            << rd
-            << ", "
-            << value
-            << "\n";
+  ctx->get_builder()->mk_load_imm_inst(rd, value);
 }
 
 void MirBinaryStmt::codegen(
@@ -193,38 +172,30 @@ void MirBinaryStmt::codegen(
   Register rs1 = ctx->get_reg(std::make_pair(id, 1u));
   Register rs2 = ctx->get_reg(std::make_pair(id, 2u));
 
-  std::string instr;
+  AsmBinaryOp instr;
   switch (op)
   {
   case MirBinaryOp::Add:
-    instr = "add";
+    instr = AsmBinaryOp::Add;
     break;
   case MirBinaryOp::Sub:
-    instr = "sub";
+    instr = AsmBinaryOp::Sub;
     break;
   case MirBinaryOp::Mul:
-    instr = "mul";
+    instr = AsmBinaryOp::Mul;
     break;
   case MirBinaryOp::Div:
-    instr = "div";
+    instr = AsmBinaryOp::Div;
     break;
   case MirBinaryOp::Mod:
-    instr = "rem";
+    instr = AsmBinaryOp::Mod;
     break;
   case MirBinaryOp::Lt:
-    instr = "slt";
+    instr = AsmBinaryOp::Lt;
     break;
   }
 
-  std::cout << "  "
-            << instr
-            << " "
-            << rd
-            << ", "
-            << rs1
-            << ", "
-            << rs2
-            << "\n";
+  ctx->get_builder()->mk_binary_inst(instr, rd, rs1, rs2);
 }
 
 void MirBinaryImmStmt::codegen(
@@ -233,36 +204,26 @@ void MirBinaryImmStmt::codegen(
   Register rd = ctx->get_reg(std::make_pair(id, 0u));
   Register rs1 = ctx->get_reg(std::make_pair(id, 1u));
 
-  std::string instr;
+  AsmBinaryImmOp instr;
   unsigned int imm;
   switch (op)
   {
   case MirImmOp::Add:
-    assert(src2 <= 2047 && src2 >= -2048);
-    instr = "addi";
+    instr = AsmBinaryImmOp::Add;
     imm = src2;
     break;
   case MirImmOp::Mul:
     assert(src2 >= 0 && (src2 & (src2 - 1)) == 0);
-    instr = "slli";
+    instr = AsmBinaryImmOp::Shift;
     imm = __builtin_ctz(src2);
     break;
   case MirImmOp::Lt:
-    assert(src2 <= 2047 && src2 >= -2048);
-    instr = "slti";
+    instr = AsmBinaryImmOp::Lt;
     imm = src2;
     break;
   }
 
-  std::cout << "  "
-            << instr
-            << " "
-            << rd
-            << ", "
-            << rs1
-            << ", "
-            << imm
-            << "\n";
+  ctx->get_builder()->mk_binary_imm_inst(instr, rd, rs1, imm);
 }
 
 void MirUnaryStmt::codegen(
@@ -271,30 +232,24 @@ void MirUnaryStmt::codegen(
   Register rd = ctx->get_reg(std::make_pair(id, 0u));
   Register rs = ctx->get_reg(std::make_pair(id, 1u));
 
-  std::string instr;
+  AsmUnaryOp instr;
   switch (op)
   {
   case MirUnaryOp::Neg:
-    instr = "neg";
+    instr = AsmUnaryOp::Neg;
     break;
   case MirUnaryOp::Nop:
-    instr = "mv";
+    instr = AsmUnaryOp::Mv;
     break;
   case MirUnaryOp::Eqz:
-    instr = "seqz";
+    instr = AsmUnaryOp::Eqz;
     break;
   case MirUnaryOp::Nez:
-    instr = "snez";
+    instr = AsmUnaryOp::Nez;
     break;
   }
 
-  std::cout << "  "
-            << instr
-            << " "
-            << rd
-            << ", "
-            << rs
-            << "\n";
+  ctx->get_builder()->mk_unary_inst(instr, rd, rs);
 }
 
 void MirCallStmt::codegen(
@@ -304,27 +259,15 @@ void MirCallStmt::codegen(
 
   for (unsigned int i = 0; i < args.size(); ++i)
   {
-    Register rs = ctx->get_reg(std::make_pair(i, id));
+    Register rs = ctx->get_reg(std::make_pair(id, i + 1));
     Register rd = static_cast<Register>(i + 1);
-    if (rs != rd) {
-      std::cout << "  mv "
-                << rd
-                << ", "
-                << rs
-                << "\n";
-    }
+    ctx->get_builder()->mk_unary_inst(AsmUnaryOp::Mv, rd, rs);
   }
 
-  std::cout << "  call "
-            << name.to_string()
-            << "\n";
+  ctx->get_builder()->mk_call_inst(name);
 
-  if (dest != ~0u) {
-    Register rd = ctx->get_reg(std::make_pair(id, 0u));
-    std::cout << "  mv "
-              << rd
-              << ", a0\n";
-  }
+  Register rd = ctx->get_reg(std::make_pair(id, 0u));
+  ctx->get_builder()->mk_unary_inst(AsmUnaryOp::Mv, rd, Register::A0);
 }
 
 void MirBranchStmt::codegen(
@@ -333,40 +276,30 @@ void MirBranchStmt::codegen(
   Register rs1 = ctx->get_reg(std::make_pair(id, 1u));
   Register rs2 = ctx->get_reg(std::make_pair(id, 2u));
 
-  std::string instr;
+  AsmBranchOp instr;
   switch (op)
   {
   case MirLogicalOp::Lt:
-    instr = "blt";
+    instr = AsmBranchOp::Lt;
     break;
   case MirLogicalOp::Leq:
-    instr = "bleq";
+    instr = AsmBranchOp::Leq;
     break;
   case MirLogicalOp::Eq:
-    instr = "beq";
+    instr = AsmBranchOp::Eq;
     break;
   case MirLogicalOp::Ne:
-    instr = "bne";
+    instr = AsmBranchOp::Ne;
     break;
   }
 
-  std::cout << "  "
-            << instr
-            << " "
-            << rs1
-            << ", "
-            << rs2
-            << ", .L"
-            << target
-            << "\n";
+  ctx->get_builder()->mk_branch_inst(instr, rs1, rs2, target);
 }
 
 void MirJumpStmt::codegen(
     const MirFuncContext *ctx, unsigned int id) const
 {
-  std::cout << "j .L"
-            << target
-            << "\n";
+  ctx->get_builder()->mk_jump_inst(target);
 }
 
 void MirStoreStmt::codegen(
@@ -375,13 +308,8 @@ void MirStoreStmt::codegen(
   Register rs1 = ctx->get_reg(std::make_pair(id, 1u));
   Register rs2 = ctx->get_reg(std::make_pair(id, 2u));
 
-  std::cout << "sw "
-            << rs1
-            << ", "
-            << offset
-            << "("
-            << rs2
-            << ")\n";
+  ctx->get_builder()->mk_memory_inst(
+      AsmMemoryOp::Store, rs1, rs2, offset);
 }
 
 void MirLoadStmt::codegen(
@@ -390,55 +318,44 @@ void MirLoadStmt::codegen(
   Register rd = ctx->get_reg(std::make_pair(id, 0u));
   Register rs = ctx->get_reg(std::make_pair(id, 1u));
 
-  std::cout << "lw "
-            << rd
-            << ", "
-            << offset
-            << "("
-            << rs
-            << ")\n";
+  ctx->get_builder()->mk_memory_inst(
+      AsmMemoryOp::Load, rd, rs, offset);
 }
 
 void MirReturnStmt::codegen(
     const MirFuncContext *ctx, unsigned int id) const
 {
   if (has_value) {
-    Register rs = ctx->get_reg(std::make_pair(id, 0u));
-    if (rs != Register::A0) {
-      std::cout << "mv a0, "
-                << rs
-                << "\n";
-    }
+    Register rs = ctx->get_reg(std::make_pair(id, 1u));
+    ctx->get_builder()->mk_unary_inst(
+        AsmUnaryOp::Mv, Register::A0, rs);
   }
 
   if (ctx->label_to_stmt_id(ctx->get_exit_label()) != id + 1) {
-    std::cout << "j .L"
-              << ctx->get_exit_label()
-              << "\n";
+    ctx->get_builder()->mk_jump_inst(ctx->get_exit_label());
   }
 }
 
-void MirFuncItem::codegen(void)
+void MirFuncItem::codegen(AsmBuilder *builder)
 {
   assert(num_args <= 9);
 
-  std::cout << ".text\n"
-            << name.to_string() << ":\n";
+  builder->mk_global_label(AsmLabelSec::Text, name);
 
-  MirFuncContext ctx(this);
+  MirFuncContext ctx(this, builder);
   ctx.prepare();
   ctx.reg_alloc();
 
+  builder->alloc_labels(labels.size());
+
   size_t frame_size = ctx.get_frame_size();
-  if (frame_size <= 2048) {
-    std::cout << "  addi sp, sp, -"
-              << frame_size
-              << "\n";
-  } else {
-    std::cout << "  li t0, "
-              << frame_size
-              << "\n";
-    std::cout << "  addi sp, sp, t0\n";
+  if (frame_size > 2048) {
+    builder->mk_load_imm_inst(Register::T0, frame_size);
+    builder->mk_binary_inst(AsmBinaryOp::Sub,
+        Register::SP, Register::SP, Register::T0);
+  } else if (frame_size > 0) {
+    builder->mk_binary_imm_inst(AsmBinaryImmOp::Add,
+        Register::SP, Register::SP, -frame_size);
   }
 
   unsigned int num_callee_regs = ctx.get_num_callee_regs();
@@ -446,34 +363,24 @@ void MirFuncItem::codegen(void)
   {
     unsigned int regid = i + NR_REG_CALLER;
     Register rs = static_cast<Register>(regid);
-    std::cout << "  sw "
-              << rs
-              << ", "
-              << ctx.get_callee_reg_offset(i)
-              << "(sp)\n";
+    builder->mk_memory_inst(
+        AsmMemoryOp::Store, rs, Register::SP,
+        ctx.get_callee_reg_offset(0));
   }
 
   for (const auto &store : ctx.get_spill_stores(0))
   {
     assert(store.first < num_args);
-    std::cout << "  sw "
-              << store.second
-              << ", "
-              << ctx.get_local_offset(store.first)
-              << "(sp)\n";
+    builder->mk_memory_inst(
+        AsmMemoryOp::Store, store.second, Register::SP,
+        ctx.get_local_offset(store.first));
   }
 
   for (unsigned int i = num_args - 1; ~i; --i)
   {
     Register rs = static_cast<Register>(i);
     Register rd = ctx.get_reg(std::make_pair(0u, i + 1));
-    if (rs != rd) {
-      std::cout << "  mv "
-                << rd
-                << ", "
-                << rs
-                << "\n";
-    }
+    builder->mk_unary_inst(AsmUnaryOp::Mv, rd, rs);
   }
 
   std::vector<std::pair<unsigned int, MirLabel>> sorted_labels;
@@ -485,112 +392,107 @@ void MirFuncItem::codegen(void)
   for (size_t i = 1; i < stmts.size(); ++i)
   {
     if (it != sorted_labels.end() && it->first == i) {
-      std::cout << ".L"
-                << it->second
-                << ":\n";
+      builder->mk_local_label(it->second);
       ++it;
     }
     stmts[i]->codegen(&ctx, i);
+
+    for (const auto &store : ctx.get_spill_stores(i))
+    {
+      builder->mk_memory_inst(
+          AsmMemoryOp::Store, store.second, Register::SP,
+          ctx.get_local_offset(store.first));
+    }
+
+    for (const auto &load : ctx.get_spill_loads(i))
+    {
+      builder->mk_memory_inst(
+          AsmMemoryOp::Load, load.second, Register::SP,
+          ctx.get_local_offset(load.first));
+    }
   }
 
   for (unsigned int i = 0; i < num_callee_regs; ++i)
   {
     unsigned int regid = i + NR_REG_CALLER;
     Register rs = static_cast<Register>(regid);
-    std::cout << "  lw "
-              << rs
-              << ", "
-              << ctx.get_callee_reg_offset(i)
-              << "(sp)\n";
+    builder->mk_memory_inst(AsmMemoryOp::Load,
+        rs, Register::SP, ctx.get_callee_reg_offset(i));
   }
 
   Register ra = ctx.get_reg(
       std::make_pair((unsigned int) stmts.size() - 1, 1u));
 
-  if (frame_size <= 2047) {
-    std::cout << "  addi sp, sp, "
-              << frame_size
-              << "\n";
-  } else {
-    Register tmp =
-      ra == Register::T0 ? Register::T1 : Register::T0;
-    std::cout << "  li "
-              << tmp
-              << ", "
-              << frame_size
-              << "\n";
-    std::cout << "  addi sp, sp, "
-              << tmp
-              << "\n";
+  if (frame_size > 2047) {
+    builder->mk_load_imm_inst(Register::T0, frame_size);
+    builder->mk_binary_inst(AsmBinaryOp::Add,
+        Register::SP, Register::SP, Register::T0);
+  } else if (frame_size > 0) {
+    builder->mk_binary_imm_inst(AsmBinaryImmOp::Add,
+        Register::SP, Register::SP, frame_size);
   }
 
-  std::cout << "  jr "
-            << ra
-            << "\n";
-
-  std::cout << std::endl;
+  builder->mk_jump_reg_inst(ra);
 }
 
-void MirDataItem::codegen(void)
+void MirDataItem::codegen(AsmBuilder *builder)
 {
-  std::cout << ".data\n"
-            << name.to_string() << ":\n";
+  builder->mk_global_label(AsmLabelSec::Data, name);
 
   unsigned int now = 0;
   for (const auto &value : values)
   {
     if (now != value.first) {
-      std::cout << ".skip "
-                << (value.first - now) * sizeof(int)
-                << "\n";
+      builder->mk_int_directive(
+          AsmIntDirType::Skip,
+          (value.first - now) * sizeof(int));
     }
-    std::cout << ".long " << value.second << "\n";
+    builder->mk_int_directive(
+        AsmIntDirType::Put, value.second);
     now = value.first + 1;
   }
   if (now != size) {
-    std::cout << ".skip "
-              << (size - now) * sizeof(int)
-              << "\n";
+    builder->mk_int_directive(
+          AsmIntDirType::Skip,
+          (size - now) * sizeof(int));
   }
-
-  std::cout << std::endl;
 }
 
-void MirRodataItem::codegen(void)
+void MirRodataItem::codegen(AsmBuilder *builder)
 {
-  std::cout << ".rodata\n"
-            << name.to_string() << ":\n";
+  builder->mk_global_label(AsmLabelSec::Rodata, name);
 
   unsigned int now = 0;
   for (const auto &value : values)
   {
     if (now != value.first) {
-      std::cout << ".skip "
-                << (value.first - now) * sizeof(int)
-                << "\n";
+      builder->mk_int_directive(
+          AsmIntDirType::Skip,
+          (value.first - now) * sizeof(int));
     }
-    std::cout << ".long " << value.second << "\n";
+    builder->mk_int_directive(
+        AsmIntDirType::Put, value.second);
     now = value.first + 1;
   }
   if (now != size) {
-    std::cout << ".skip "
-              << (size - now) * sizeof(int)
-              << "\n";
+    builder->mk_int_directive(
+          AsmIntDirType::Skip,
+          (size - now) * sizeof(int));
   }
-
-  std::cout << std::endl;
 }
 
-void MirBssItem::codegen(void)
+void MirBssItem::codegen(AsmBuilder *builder)
 {
-  std::cout << ".bss\n"
-            << name.to_string() << ":\n"
-            << "  .skip " << size * sizeof(int) << "\n"
-            << std::endl;
+  builder->mk_global_label(AsmLabelSec::Bss, name);
+  builder->mk_int_directive(AsmIntDirType::Skip, size * sizeof(int));
 }
 
-void MirCompUnit::codegen(void)
+std::unique_ptr<AsmFile> MirCompUnit::codegen(void)
 {
+  AsmBuilder builder;
+
   for (auto &item : items)
-    item->codegen();
+    item->codegen(&builder);
+
+  return std::make_unique<AsmFile>(std::move(builder));
 }

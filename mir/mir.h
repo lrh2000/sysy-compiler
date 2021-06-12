@@ -43,6 +43,9 @@ class MirBuilder;
 
 class MirFuncContext;
 
+class AsmFile;
+class AsmBuilder;
+
 class MirStmt
 {
 public:
@@ -291,7 +294,7 @@ private:
 class MirItem
 {
 public:
-  virtual void codegen(void) = 0;
+  virtual void codegen(AsmBuilder *builder) = 0;
 };
 
 class MirFuncItem :public MirItem
@@ -299,7 +302,7 @@ class MirFuncItem :public MirItem
 public:
   MirFuncItem(MirFuncBuilder &&builder);
 
-  void codegen(void) override;
+  void codegen(AsmBuilder *builder) override;
 
 private:
   Symbol name;
@@ -325,7 +328,7 @@ public:
     : name(name), size(size), values(std::move(values))
   {}
 
-  void codegen(void) override;
+  void codegen(AsmBuilder *builder) override;
 
 private:
   Symbol name;
@@ -341,7 +344,7 @@ public:
     : name(name), size(size), values(std::move(values))
   {}
 
-  void codegen(void) override;
+  void codegen(AsmBuilder *builder) override;
 
 private:
   Symbol name;
@@ -356,7 +359,7 @@ public:
     : name(name), size(size)
   {}
 
-  void codegen(void) override;
+  void codegen(AsmBuilder *builder) override;
 
 private:
   Symbol name;
@@ -368,7 +371,7 @@ class MirCompUnit
 public:
   MirCompUnit(MirBuilder &&builder);
 
-  void codegen(void);
+  std::unique_ptr<AsmFile> codegen(void);
 
 private:
   std::vector<std::unique_ptr<MirItem>> items;

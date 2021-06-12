@@ -73,7 +73,15 @@ public:
     data[pos / 64] &= ~(1ull << (pos % 64));
   }
 
-  void reset()
+  void set_all(void)
+  {
+    for (size_t i = 0; i < num_bits / 64; ++i)
+      data[i] = ~0ull;
+    if (num_bits % 64)
+      data[num_bits / 64] = (1ull << (num_bits % 64)) - 1;
+  }
+
+  void reset(void)
   {
     for (size_t i = 0; i < data.size(); ++i)
       data[i] = 0;

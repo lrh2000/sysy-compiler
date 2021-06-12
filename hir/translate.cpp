@@ -345,6 +345,7 @@ void HirFuncItem::translate(MirBuilder *builder)
       num_locals, array_sz, std::move(array_off));
 
   body->translate(&func_builder);
+  func_builder.finish_build();
 
   builder->add_item(
       std::make_unique<MirFuncItem>(std::move(func_builder)));

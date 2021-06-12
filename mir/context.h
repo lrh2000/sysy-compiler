@@ -6,42 +6,16 @@
 #include <cassert>
 #include "defid.h"
 #include "mir.h"
+#include "../asm/register.h"
 
 typedef std::pair<unsigned int, unsigned int> MirOperand;
 typedef std::vector<MirOperand> MirOperands;
 
-#define NR_REG_CALLER    16
-#define NR_REG_CALLEE    14
-#define NR_REGISTERS     30
-
-#define MASK_REG_CALLER  0x0000ffff
-#define MASK_REG_CALLEE  0x3fff0000
-#define MASK_REGISTERS   0x3fffffff
-
-enum class Register
-{
-  RA,
-  A0, A1, A2, A3, A4, A5, A6, A7,
-  T0, T1, T2, T3, T4, T5, T6,
-  S0, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11,
-  GP, TP, SP,
-  X0,
-  UND,
-};
-
-extern const char *g_register_names[];
-
-extern inline std::ostream &operator <<(std::ostream &os, Register reg)
-{
-  uint32_t regid = static_cast<uint32_t>(reg);
-  assert(regid < static_cast<uint32_t>(Register::UND));
-  os << g_register_names[regid];
-  return os;
-}
-
 struct MirLocalLiveness;
 struct MirLoop;
 struct MirStmtInfo;
+
+class AsmBuilder;
 
 class MirFuncContext
 {
@@ -50,7 +24,7 @@ class MirFuncContext
   typedef std::unordered_map<unsigned int, SpillOps> SpillPosAndOps;
 
 public:
-  MirFuncContext(MirFuncItem *func);
+  MirFuncContext(MirFuncItem *func, AsmBuilder *builder);
   ~MirFuncContext(void);
 
   void prepare(void);
@@ -116,6 +90,11 @@ public:
     return reg_info[operand.first][operand.second];
   }
 
+  AsmBuilder *get_builder(void) const
+  {
+    return builder;
+  }
+
 private:
   void build_liveness_one(MirLocal local);
   void build_liveness_all(void);
@@ -150,5 +129,7 @@ private:
 
   unsigned int num_callee_regs;
 
+  mutable AsmBuilder *builder;
+    
   static const SpillOps g_no_spill_ops;
 };

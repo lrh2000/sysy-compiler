@@ -7,6 +7,7 @@
 #include "../ast/context.h"
 #include "../hir/hir.h"
 #include "../mir/mir.h"
+#include "../asm/asm.h"
 
 int main(int argc, char **argv)
 {
@@ -38,7 +39,9 @@ int main(int argc, char **argv)
   hir->const_eval();
 
   auto mir = hir->translate();
-  mir->codegen();
+  auto asm_ = mir->codegen();
+
+  std::cout << *asm_;
 
   return 0;
 }

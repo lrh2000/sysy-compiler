@@ -2,17 +2,9 @@
 #include <stack>
 #include "mir.h"
 #include "context.h"
+#include "../asm/register.h"
 #include "../utils/bitset.h"
 #include "../utils/graph.h"
-
-const char *g_register_names[] = {
-  "ra",
-  "a0", "a1", "a2", "a3", "a4", "a5", "a6", "A7",
-  "t0", "t1", "t2", "t3", "t4", "t5", "t6",
-  "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11",
-  "gp", "tp", "sp",
-  "x0",
-};
 
 const MirFuncContext::SpillOps MirFuncContext::g_no_spill_ops = {};
 
@@ -66,10 +58,12 @@ struct MirLocalLiveness
   uint32_t color;
 };
 
-MirFuncContext::MirFuncContext(MirFuncItem *func)
+MirFuncContext::MirFuncContext(
+    MirFuncItem *func, AsmBuilder *builder)
   : func(func), stmt_info(), defs(), uses(),
     liveness(), loops(), reg_info(), spilled_locals(),
-    spill_loads(), spill_stores(), num_callee_regs(0)
+    spill_loads(), spill_stores(), num_callee_regs(0),
+    builder(builder)
 {}
 
 MirFuncContext::~MirFuncContext(void)
@@ -124,11 +118,20 @@ void MirFuncContext::fill_defs_and_uses(void)
   }
 
   uses[0].emplace_back(stmt_info.size() - 1, 1);
-  reg_info[stmt_info.size() - 1].resize(1, Register::UND);
+  reg_info[stmt_info.size() - 1].resize(2, Register::UND);
 }
 
 void MirFuncContext::identify_loops(void)
 {
+  {
+    Bitset stmts(stmt_info.size());
+    stmts.set_all();
+
+    loops.emplace_back(std::move(stmts),
+        std::vector<unsigned int>(), 0,
+        std::vector<unsigned int>());
+  }
+
   for (size_t pos = 0; pos < stmt_info.size(); ++pos)
   {
     unsigned int ppos_max = 0;
@@ -260,10 +263,10 @@ void MirFuncContext::build_liveness_one(MirLocal local)
 
   for (size_t i = 0; i < nr_uses; ++i)
   {
-    if (visited.get(i))
+    if (visited.get(i + nr_stmts))
       continue;
-    visited.set(i);
-    queue.push(i);
+    visited.set(i + nr_stmts);
+    queue.push(i + nr_stmts);
 
     Bitset live_stmts(nr_stmts);
     MirOperands defs;
@@ -285,7 +288,6 @@ void MirFuncContext::build_liveness_one(MirLocal local)
 
       if (pos >= nr_stmts) {
         pos -= nr_stmts;
-        visited.set(pos);
         const auto &use = this->uses[local][pos];
         uses.emplace_back(use);
         if (stmt_info[use.first].func_call)
@@ -426,11 +428,15 @@ use_out:
   {
     if (def.first == 0) {
       assert(ll.local == def.second - 1);
-      spill_stores[0].emplace_back(ll.local,
-          static_cast<Register>(def.second - 1));
+
+      Register reg = static_cast<Register>(ll.local);
+      spill_stores[0].emplace_back(ll.local, reg);
+      reg_info[0][ll.local + 1] = reg;
+
       if (auto it = spilled_locals.find(ll.local);
           it == spilled_locals.end())
         spilled_locals[ll.local] = spilled_locals.size();
+
       continue;
     }
 
