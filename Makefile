@@ -10,9 +10,9 @@ CXXFLAGS := -Wall -g
 LD       := g++
 LDFLFAGS :=
 
-TESTARCH    := -march=rv32i -mabi=ilp32
+TESTARCH    := -march=rv32im -mabi=ilp32
 TESTCC      := riscv64-elf-gcc
-TESTCFLAGS  := -Wall -O3 $(TESTARCH)
+TESTCFLAGS  := -Wall -Wno-missing-braces -O3 $(TESTARCH)
 TESTLD      := riscv64-elf-gcc 
 TESTLDFLAGS := $(TESTARCH)
 TESTAS      := riscv64-elf-as

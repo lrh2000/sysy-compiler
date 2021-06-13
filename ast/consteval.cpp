@@ -112,7 +112,7 @@ AstInit::collect_const(const AstContext *ctx,
   for (auto &e : expr)
   {
     int val = e.second->const_eval(ctx);
-    if (val != 0)
+    if (val != 0 || shape.size() == 0)
       lit.emplace_back(e.first, val);
   }
 

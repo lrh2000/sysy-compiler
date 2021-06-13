@@ -1,0 +1,14 @@
+int get_1d(int a[], int z)
+{
+  return a[z];
+}
+
+int get_2d(int a[][4], int y, int z)
+{
+  return get_1d(a[y], z);
+}
+
+int get_3d(int a[][3][4], int x, int y, int z)
+{
+  return get_2d(a[x], y, z);
+}

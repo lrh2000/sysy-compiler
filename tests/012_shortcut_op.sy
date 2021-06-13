@@ -1,0 +1,21 @@
+int counter = 0;
+
+int foo()
+{
+  counter = counter + 1;
+  return counter;
+}
+
+int shortcut_or(int lhs)
+{
+  if (lhs || !foo())
+    return 1;
+  return 0;
+}
+
+int shortcut_and(int lhs)
+{
+  if (lhs && foo())
+    return 1;
+  return 0;
+}

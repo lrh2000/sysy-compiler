@@ -13,6 +13,41 @@ bool MirCallStmt::is_func_call(void) const
   return true;
 }
 
+bool MirStmt::is_mem_store(void) const
+{
+  return false;
+}
+
+bool MirStoreStmt::is_mem_store(void) const
+{
+  return true;
+}
+
+bool MirStmt::is_mem_load(void) const
+{
+  return false;
+}
+
+bool MirLoadStmt::is_mem_load(void) const
+{
+  return true;
+}
+
+bool MirStmt::is_jump_or_branch(void) const
+{
+  return false;
+}
+
+bool MirJumpStmt::is_jump_or_branch(void) const
+{
+  return true;
+}
+
+bool MirBranchStmt::is_jump_or_branch(void) const
+{
+  return true;
+}
+
 std::vector<unsigned int>
 MirStmt::get_next(const MirFuncContext *ctx, unsigned int id) const
 {
@@ -344,6 +379,7 @@ void MirFuncItem::codegen(AsmBuilder *builder)
 
   MirFuncContext ctx(this, builder);
   ctx.prepare();
+  ctx.optimize();
   ctx.reg_alloc();
 
   builder->alloc_labels(labels.size());
@@ -365,7 +401,7 @@ void MirFuncItem::codegen(AsmBuilder *builder)
     Register rs = static_cast<Register>(regid);
     builder->mk_memory_inst(
         AsmMemoryOp::Store, rs, Register::SP,
-        ctx.get_callee_reg_offset(0));
+        ctx.get_callee_reg_offset(i));
   }
 
   for (const auto &store : ctx.get_spill_stores(0))

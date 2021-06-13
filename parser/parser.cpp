@@ -293,9 +293,10 @@ std::unique_ptr<AstCond> Parser::parse_eq_cond(void)
       op = AstLogicalOp::Ne;
     else
       break;
+    bump();
 
     auto rhs = parse_rel_cond();
-    rhs = std::make_unique<AstBinaryCond>(
+    lhs = std::make_unique<AstBinaryCond>(
           std::move(lhs), std::move(rhs), op);
   }
 
@@ -595,10 +596,18 @@ Parser::parse_func_item(bool is_void, Symbol name)
   bump();
 
   std::vector<std::unique_ptr<AstFuncArg>> args;
-  while (!expect(Token::RightRound))
-  {
-    auto arg = parse_func_arg();
-    args.emplace_back(std::move(arg));
+  if (!expect(Token::RightRound)) {
+    for (;;)
+    {
+      auto arg = parse_func_arg();
+      args.emplace_back(std::move(arg));
+      if (expect(Token::Comma))
+        bump();
+      else if (expect(Token::RightRound))
+        break;
+      else
+        expected_but_found();
+    }
   }
   bump();
 

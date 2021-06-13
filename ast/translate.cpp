@@ -99,10 +99,13 @@ std::unique_ptr<HirExpr> AstLvalExpr::into_addr(AstContext *ctx)
     const auto &shape = *pshape;
     assert(indices.size() <= shape.size() + is_ptr);
 
-    size_t strip = 4;
+    if (indices.size() == 0)
+      return base;
+
+    size_t strip = sizeof(int);
     for (size_t i = shape.size() + is_ptr - 1; i >= indices.size(); --i)
-      strip *= shape[i ? (i - is_ptr) : 0];
-    for (size_t i = indices.size() - 1; ~i; --i)
+      strip *= shape[i - is_ptr];
+    for (size_t i = indices.size() - 1; ; --i)
     {
       auto literal = std::make_unique<HirLiteralExpr>(strip);
       auto hir_arg = indices[i]->translate(ctx);
@@ -110,7 +113,10 @@ std::unique_ptr<HirExpr> AstLvalExpr::into_addr(AstContext *ctx)
           HirBinaryOp::Mul, std::move(hir_arg), std::move(literal));
       base = std::make_unique<HirBinaryExpr>(
           HirBinaryOp::Add, std::move(base), std::move(offset));
-      strip *= shape[i ? (i - is_ptr) : 0];
+      if (i != 0)
+        strip *= shape[i - is_ptr];
+      else
+        break;
     }
 
     return base;
@@ -369,6 +375,7 @@ static void fill_and_set(
     auto stmt =
       std::make_unique<HirStoreStmt>(std::move(addr), std::move(expr));
     builder->add_statement(std::move(stmt));
+    ++it;
   }
 
   for (unsigned int i = (size & ~7u); i < size; ++i)

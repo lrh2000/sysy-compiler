@@ -55,6 +55,18 @@ public:
   virtual std::vector<MirLocal> get_uses(void) const;
 
   virtual bool is_func_call(void) const;
+  virtual bool is_mem_store(void) const;
+  virtual bool is_mem_load(void) const;
+  virtual bool is_jump_or_branch(void) const;
+
+  virtual bool apply_rules(
+    const std::unordered_map<MirLabel, MirLabel> &rules);
+  virtual size_t hash(void) const;
+  virtual bool equal(const MirStmt *other) const;
+
+  virtual MirLocal get_assign_val(void) const;
+
+  virtual void replace(MirLocal local, MirLocal new_local) = 0;
 
   virtual void codegen(const MirFuncContext *ctx, unsigned int id) const = 0;
 };
@@ -63,6 +75,8 @@ class MirEmptyStmt :public MirStmt
 {
 public:
   MirEmptyStmt(void) {}
+
+  void replace(MirLocal local, MirLocal new_local) override;
 
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
 };
@@ -73,6 +87,13 @@ public:
   MirSymbolAddrStmt(MirLocal dest, Symbol name, off_t offset)
     : dest(dest), name(name), offset(offset)
   {}
+
+  void replace(MirLocal local, MirLocal new_local) override;
+
+  bool apply_rules(
+    const std::unordered_map<MirLabel, MirLabel> &rules) override;
+  size_t hash(void) const override;
+  bool equal(const MirStmt *other) const override;
 
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
 
@@ -91,6 +112,13 @@ public:
     : dest(dest), id(id), offset(offset)
   {}
 
+  void replace(MirLocal local, MirLocal new_local) override;
+
+  bool apply_rules(
+    const std::unordered_map<MirLabel, MirLabel> &rules) override;
+  size_t hash(void) const override;
+  bool equal(const MirStmt *other) const override;
+
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
 
   MirLocal get_def(void) const override;
@@ -108,6 +136,13 @@ public:
     : dest(dest), value(value)
   {}
 
+  void replace(MirLocal local, MirLocal new_local) override;
+
+  bool apply_rules(
+    const std::unordered_map<MirLabel, MirLabel> &rules) override;
+  size_t hash(void) const override;
+  bool equal(const MirStmt *other) const override;
+
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
 
   MirLocal get_def(void) const override;
@@ -124,6 +159,13 @@ public:
       MirLocal src1, MirLocal src2, MirBinaryOp op)
     : dest(dest), src1(src1), src2(src2), op(op)
   {}
+
+  void replace(MirLocal local, MirLocal new_local) override;
+
+  bool apply_rules(
+    const std::unordered_map<MirLabel, MirLabel> &rules) override;
+  size_t hash(void) const override;
+  bool equal(const MirStmt *other) const override;
 
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
 
@@ -145,6 +187,13 @@ public:
     : dest(dest), src1(src1), src2(src2), op(op)
   {}
 
+  void replace(MirLocal local, MirLocal new_local) override;
+
+  bool apply_rules(
+    const std::unordered_map<MirLabel, MirLabel> &rules) override;
+  size_t hash(void) const override;
+  bool equal(const MirStmt *other) const override;
+
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
 
   MirLocal get_def(void) const override;
@@ -164,10 +213,19 @@ public:
     : dest(dest), src(src), op(op)
   {}
 
+  void replace(MirLocal local, MirLocal new_local) override;
+
+  bool apply_rules(
+    const std::unordered_map<MirLabel, MirLabel> &rules) override;
+  size_t hash(void) const override;
+  bool equal(const MirStmt *other) const override;
+
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
 
   MirLocal get_def(void) const override;
   std::vector<MirLocal> get_uses(void) const override;
+
+  MirLocal get_assign_val(void) const override;
 
 private:
   MirLocal dest;
@@ -184,6 +242,8 @@ public:
   {}
 
   bool is_func_call(void) const override;
+  
+  void replace(MirLocal local, MirLocal new_local) override;
 
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
 
@@ -204,12 +264,16 @@ public:
     : src1(src1), src2(src2), target(target), op(op)
   {}
 
+  void replace(MirLocal local, MirLocal new_local) override;
+
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
 
   std::vector<unsigned int>
   get_next(const MirFuncContext *ctx, unsigned int id) const override;
 
   std::vector<MirLocal> get_uses(void) const override;
+
+  bool is_jump_or_branch(void) const override;
 
 private:
   MirLocal src1;
@@ -225,10 +289,14 @@ public:
     : target(target)
   {}
 
+  void replace(MirLocal local, MirLocal new_local) override;
+
   std::vector<unsigned int>
   get_next(const MirFuncContext *ctx, unsigned int id) const override;
 
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
+
+  bool is_jump_or_branch(void) const override;
 
 private:
   MirLabel target;
@@ -241,9 +309,13 @@ public:
     : value(value), address(address), offset(offset)
   {}
 
+  void replace(MirLocal local, MirLocal new_local) override;
+
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
 
   std::vector<MirLocal> get_uses(void) const override;
+
+  bool is_mem_store(void) const override;
 
 private:
   MirLocal value;
@@ -258,10 +330,19 @@ public:
     : dest(dest), address(address), offset(offset)
   {}
 
+  void replace(MirLocal local, MirLocal new_local) override;
+
+  bool apply_rules(
+    const std::unordered_map<MirLabel, MirLabel> &rules) override;
+  size_t hash(void) const override;
+  bool equal(const MirStmt *other) const override;
+
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
 
   MirLocal get_def(void) const override;
   std::vector<MirLocal> get_uses(void) const override;
+
+  bool is_mem_load(void) const override;
 
 private:
   MirLocal dest;
@@ -279,6 +360,8 @@ public:
   MirReturnStmt(MirLocal value)
     : has_value(true), value(value)
   {}
+
+  void replace(MirLocal local, MirLocal new_local) override;
 
   std::vector<unsigned int>
   get_next(const MirFuncContext *ctx, unsigned int id) const override;

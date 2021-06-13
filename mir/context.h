@@ -16,6 +16,7 @@ struct MirLoop;
 struct MirStmtInfo;
 
 class AsmBuilder;
+class Bitset;
 
 class MirFuncContext
 {
@@ -23,11 +24,16 @@ class MirFuncContext
   typedef std::vector<SpillOp> SpillOps;
   typedef std::unordered_map<unsigned int, SpillOps> SpillPosAndOps;
 
+  typedef std::pair<MirLocal, MirLocal> PhiOp;
+  typedef std::vector<PhiOp> PhiOps;
+  typedef std::unordered_map<unsigned int, PhiOps> PhiPosAndOps;
+
 public:
   MirFuncContext(MirFuncItem *func, AsmBuilder *builder);
   ~MirFuncContext(void);
 
   void prepare(void);
+  void optimize(void);
   void reg_alloc(void);
 
   unsigned int label_to_stmt_id(MirLabel label) const
@@ -47,19 +53,19 @@ public:
 
   size_t get_frame_size(void) const
   {
-    return func->array_size + num_callee_regs * 4 +
-      + spilled_locals.size() * sizeof(int);
+    return sizeof(int) *
+      (func->array_size + num_callee_regs + spilled_locals.size());
   }
 
   off_t get_array_offset(MirArray vid) const
   {
-    return func->array_offs[vid] + num_callee_regs * 4 +
-      + spilled_locals.size() * sizeof(int);
+    return sizeof(int) *
+      (func->array_offs[vid] + num_callee_regs + spilled_locals.size());
   }
 
   off_t get_callee_reg_offset(unsigned int rid) const
   {
-    return rid * 4 + spilled_locals.size() * sizeof(int);
+    return sizeof(int) * (rid + spilled_locals.size());
   }
 
   off_t get_local_offset(MirLocal vid) const
@@ -111,6 +117,21 @@ private:
   void finish_liveness(const MirLocalLiveness &ll);
   void identify_loops(void);
 
+  Bitset identify_invariants(const MirLoop &loop);
+  void move_invariants(void);
+
+  void convert_one_to_ssa(
+      MirLocal local, PhiPosAndOps &phi_ops);
+  void convert_all_to_ssa(void);
+
+  void merge_duplicates(void);
+  void remove_unused(void);
+
+  MirLocal new_phi(void)
+  {
+    return num_phis++;
+  }
+
 private:
   MirFuncItem *func;
 
@@ -130,6 +151,8 @@ private:
   unsigned int num_callee_regs;
 
   mutable AsmBuilder *builder;
-    
+ 
+  unsigned int num_phis;
+
   static const SpillOps g_no_spill_ops;
 };

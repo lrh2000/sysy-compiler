@@ -1,0 +1,29 @@
+int identity(int a)
+{
+  return a;
+}
+
+int square(int a)
+{
+  return a * a;
+}
+
+int calc1(int x)
+{
+  return x + x * x;
+}
+
+int calc2(int x)
+{
+  return identity(x) + x * x;
+}
+
+int calc3(int x)
+{
+  return x + square(x);
+}
+
+int calc4(int x)
+{
+  return identity(x) + square(x);
+}

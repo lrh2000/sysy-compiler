@@ -2,68 +2,19 @@
 #include <stack>
 #include "mir.h"
 #include "context.h"
+#include "context_impl.h"
 #include "../asm/register.h"
 #include "../utils/bitset.h"
 #include "../utils/graph.h"
 
 const MirFuncContext::SpillOps MirFuncContext::g_no_spill_ops = {};
 
-struct MirStmtInfo
-{
-  MirStmtInfo(std::vector<unsigned int> &&next,
-      std::vector<unsigned int> &&prev,
-      MirLocal def, bool func_call)
-    : next(std::move(next)), prev(std::move(prev)),
-      def(def), func_call(func_call)
-  {}
-
-  std::vector<unsigned int> next;
-  std::vector<unsigned int> prev;
-  MirLocal def;
-  bool func_call;
-};
-
-struct MirLoop
-{
-  MirLoop(Bitset &&stmts, std::vector<unsigned int> &&kids,
-      unsigned int head, std::vector<unsigned int> &&tails)
-    : stmts(std::move(stmts)), kids(std::move(kids)),
-      head(head), tails(std::move(tails))
-  {}
-
-  Bitset stmts;
-  std::vector<unsigned int> kids;
-  unsigned int head;
-  std::vector<unsigned int> tails;
-};
-
-struct MirLocalLiveness
-{
-  MirLocalLiveness(Bitset &&stmts,
-      MirOperands &&defs, MirOperands &&uses,
-      MirLocal local, unsigned int loop, uint32_t color_mask)
-    : stmts(std::move(stmts)),
-      defs(std::move(defs)), uses(std::move(uses)),
-      local(local), loop(loop), color_mask(color_mask),
-      to_spill(false), color(0)
-  {}
-
-  Bitset stmts;
-  MirOperands defs;
-  MirOperands uses;
-  MirLocal local;
-  unsigned int loop;
-  uint32_t color_mask;
-  bool to_spill;
-  uint32_t color;
-};
-
 MirFuncContext::MirFuncContext(
     MirFuncItem *func, AsmBuilder *builder)
   : func(func), stmt_info(), defs(), uses(),
     liveness(), loops(), reg_info(), spilled_locals(),
     spill_loads(), spill_stores(), num_callee_regs(0),
-    builder(builder)
+    builder(builder), num_phis(func->num_temps)
 {}
 
 MirFuncContext::~MirFuncContext(void)
@@ -89,8 +40,8 @@ void MirFuncContext::fill_stmt_info(void)
 
 void MirFuncContext::fill_defs_and_uses(void)
 {
-  defs.resize(func->num_temps);
-  uses.resize(func->num_temps);
+  defs.resize(num_phis);
+  uses.resize(num_phis);
 
   reg_info.resize(stmt_info.size());
 
@@ -144,7 +95,13 @@ void MirFuncContext::identify_loops(void)
     Bitset stmts(stmt_info.size());
     std::queue<unsigned int> queue;
     stmts.set(pos);
-    queue.push(pos);
+    for (auto ppos : stmt_info[pos].prev)
+    {
+      if (ppos > pos) {
+        stmts.set(ppos);
+        queue.push(ppos);
+      }
+    }
 
     while (!queue.empty())
     {
@@ -165,8 +122,18 @@ void MirFuncContext::identify_loops(void)
     for (auto stmt : stmts)
       for (auto npos : stmt_info[stmt].next)
         tails.emplace_back(npos);
-    for (auto tail : tails)
-      stmts.set(tail);
+    tails.erase(
+        std::remove_if(
+          tails.begin(),
+          tails.end(),
+          [&] (unsigned int i) {
+            if (stmts.get(i))
+              return true;
+            stmts.set(i);
+            return false;
+          }),
+        tails.end());
+
     assert(pos > 0);
     stmts.set(pos - 1);
 
@@ -174,23 +141,18 @@ void MirFuncContext::identify_loops(void)
         std::vector<unsigned int>(), pos - 1, std::move(tails));
   }
 
-  std::stack<size_t> stack;
-
-  for (size_t i = 0; i < loops.size(); ++i)
-  {
-    while (!stack.empty()
-        && !loops[stack.top()].stmts.contains(loops[i].stmts))
-      stack.pop();
-    if (!stack.empty())
-      loops[stack.top()].kids.emplace_back(i);
-    stack.push(i);
-  }
+  for (size_t i = 1; i < loops.size(); ++i)
+    for (size_t j = 0; ~j; --j)
+      if (loops[j].stmts.contain(loops[i].stmts))
+        loops[j].kids.emplace_back(i);
 }
 
 void MirFuncContext::prepare(void)
 {
+  stmt_info.clear();
+  loops.clear();
+
   fill_stmt_info();
-  fill_defs_and_uses();
   identify_loops();
 }
 
@@ -315,7 +277,10 @@ void MirFuncContext::build_liveness_one(MirLocal local)
         std::move(defs), std::move(uses), local, 0, color_mask);
   }
 
-  for (size_t i = 0; i < stmt_info.size(); ++i)
+  if (local < func->num_args && !visited.get(0))
+    reg_info[0][local + 1] = static_cast<Register>(local);
+
+  for (size_t i = 1; i < stmt_info.size(); ++i)
   {
     if (stmt_info[i].def != local)
       continue;
@@ -453,17 +418,15 @@ void MirFuncContext::spill_liveness_all(void)
 {
   size_t size = liveness.size();
 
-  bool can_spill = false;
   for (size_t i = 0; i < size; ++i)
-    if (liveness[i].to_spill && liveness[i].loop != ~0u)
-      can_spill = true;
-    else
-      liveness[i].to_spill = false;
-  assert(can_spill);
-
-  for (size_t i = 0; i < size; ++i)
-    if (liveness[i].to_spill)
+  {
+    if (liveness[i].to_spill) {
+      assert(liveness[i].loop != ~0u);
       spill_liveness_one(liveness[i]);
+    } else {
+      liveness[i].color = 0;
+    }
+  }
 
   liveness.erase(
       std::remove_if(
@@ -510,7 +473,7 @@ bool MirFuncContext::graph_try_color(void)
       stack.push(x);
 
       for (auto y : graph.adjacent(x))
-        if (--degree[y] == NR_REGISTERS - 1)
+        if (degree[y] && --degree[y] == NR_REGISTERS - 1)
           queue.push(y);
       degree[x] = 0;
     }
@@ -531,7 +494,7 @@ bool MirFuncContext::graph_try_color(void)
 
     stack.push(node);
     for (auto y : graph.adjacent(node))
-      if (--degree[y] == NR_REGISTERS - 1)
+      if (degree[y] && --degree[y] == NR_REGISTERS - 1)
         queue.push(y);
     degree[node] = 0;
   }
@@ -626,6 +589,7 @@ void MirFuncContext::finish_reg_alloc(void)
 
 void MirFuncContext::reg_alloc(void)
 {
+  fill_defs_and_uses();
   build_liveness_all();
 
   while (!graph_try_color())

@@ -3,6 +3,7 @@
 #include <string>
 #include <unordered_set>
 #include "type.h"
+#include "../utils/hash.h"
 
 class AstTypeHash
 {
@@ -25,12 +26,6 @@ public:
 
 static std::unordered_set<std::unique_ptr<AstType>,
                           AstTypeHash, AstTypeEqual> type_set;
-
-template <typename T>
-static inline void hash_combine(std::size_t &seed, const T &v)
-{
-  seed ^= std::hash<T>()(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-}
 
 size_t AstType::hash(void) const
 {

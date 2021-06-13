@@ -141,7 +141,8 @@ Token Lexer::lex_ident(void)
   assert(isalpha(peek()));
   do {
     bump();
-  } while (!eof() && (isdigit(peek()) || isalpha(peek())));
+  } while (!eof()
+      && (isdigit(peek()) || isalpha(peek()) || peek() == '_'));
 
   return Token(src.substr(start, pos - start), location);
 }

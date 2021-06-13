@@ -1,0 +1,20 @@
+int next_prime(int x, int n)
+{
+  while (x < n)
+  {
+    x = x + 1;
+    int y = 2;
+    int z = 0;
+    while (y < x)
+    {
+      if (x % y == 0) {
+        z = 1;
+        break;
+      }
+      y = y + 1;
+    }
+    if (!z)
+      return x;
+  }
+  return n;
+}

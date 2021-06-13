@@ -104,6 +104,7 @@ public:
     : vid(vid)
   {}
 
+  MirLocal translate(MirFuncBuilder *builder) override;
   void translate(MirFuncBuilder *builder, MirLocal dest) override;
 
 private:

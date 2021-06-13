@@ -96,7 +96,7 @@ public:
     return false;
   }
 
-  bool contains(const Bitset &other) const
+  bool contain(const Bitset &other) const
   {
     assert(num_bits == other.num_bits);
     for (size_t i = 0; i < data.size(); ++i)
@@ -110,6 +110,14 @@ public:
     assert(num_bits == other.num_bits);
     for (size_t i = 0; i < data.size(); ++i)
       data[i] |= other.data[i];
+    return *this;
+  }
+
+  Bitset &operator -=(const Bitset &other)
+  {
+    assert(num_bits == other.num_bits);
+    for (size_t i = 0; i < data.size(); ++i)
+      data[i] &= ~other.data[i];
     return *this;
   }
 

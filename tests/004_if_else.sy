@@ -1,0 +1,14 @@
+int min1(int a, int b)
+{
+  if (a < b)
+    b = a;
+  return b;
+}
+
+int min2(int a, int b)
+{
+  if (a < b)
+    return a;
+  else
+    return b;
+}

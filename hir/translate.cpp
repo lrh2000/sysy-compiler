@@ -21,6 +21,11 @@ void HirLocalAddrExpr::translate(MirFuncBuilder *builder, MirLocal dest)
       std::make_unique<MirArrayAddrStmt>(dest, (MirArray) vid, off));
 }
 
+MirLocal HirLocalVarExpr::translate(MirFuncBuilder *builder)
+{
+  return (MirLocal) vid;
+}
+
 void HirLocalVarExpr::translate(MirFuncBuilder *builder, MirLocal dest)
 {
   builder->add_statement(
@@ -265,15 +270,20 @@ void HirBlockStmt::translate(MirFuncBuilder *builder)
 
 void HirIfStmt::translate(MirFuncBuilder *builder)
 {
-  MirLabel body = builder->new_label();
-  MirLabel next = builder->new_label();
+  MirLabel if_label = builder->new_label();
+  MirLabel else_label = builder->new_label();
+  MirLabel end_label = builder->new_label();
 
-  cond->translate(builder, body, next);
+  cond->translate(builder, if_label, else_label);
 
-  builder->set_label(body);
+  builder->set_label(if_label);
   if_stmt->translate(builder);
+  builder->add_statement(std::make_unique<MirJumpStmt>(end_label));
 
-  builder->set_label(next);
+  builder->set_label(else_label);
+  /* nothing */
+
+  builder->set_label(end_label);
 }
 
 void HirIfElseStmt::translate(MirFuncBuilder *builder)
@@ -298,18 +308,20 @@ void HirWhileStmt::translate(MirFuncBuilder *builder)
 {
   MirLabel head = builder->new_label();
   MirLabel body = builder->new_label();
-  MirLabel tail = builder->new_label();
+  MirLabel branch_tail = builder->new_label();
+  MirLabel jump_tail = builder->new_label();
 
-  builder->loop_push(head, tail);
+  builder->loop_push(head, jump_tail);
 
   builder->set_label(head);
-  cond->translate(builder, body, tail);
+  cond->translate(builder, body, branch_tail);
 
   builder->set_label(body);
   this->body->translate(builder);
 
   builder->add_statement(std::make_unique<MirJumpStmt>(head));
-  builder->set_label(tail);
+  builder->set_label(branch_tail);
+  builder->set_label(jump_tail);
 
   builder->loop_pop();
 }
@@ -321,7 +333,10 @@ void HirExprStmt::translate(MirFuncBuilder *builder)
 
 void HirAssignStmt::translate(MirFuncBuilder *builder)
 {
-  rhs->translate(builder, (MirLocal) lhs);
+  MirLocal temp = builder->new_temp();
+  rhs->translate(builder, temp);
+  builder->add_statement(
+      std::make_unique<MirUnaryStmt>((MirLocal) lhs, temp, MirUnaryOp::Nop));
 }
 
 void HirContinueStmt::translate(MirFuncBuilder *builder)
