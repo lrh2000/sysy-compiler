@@ -16,5 +16,7 @@ int main(void)
   assert(next_prime(198, 200) == 199);
   assert(next_prime(199, 200) == 200);
   assert(next_prime(200, 200) == 200);
+
+  puts(__FILE__ " passed");
   return 0;
 }

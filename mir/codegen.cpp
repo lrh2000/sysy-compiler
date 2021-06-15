@@ -2,6 +2,45 @@
 #include "context.h"
 #include "../asm/asm.h"
 #include "../asm/builder.h"
+#include "../utils/bitset.h"
+
+void MirSpillLoad::codegen(const MirFuncContext *ctx) const
+{
+  off_t off = ctx->get_local_offset(var);
+  ctx->get_builder()->mk_memory_inst(
+      AsmMemoryOp::Load, rd, Register::SP, off);
+}
+
+void MirSpillStore::codegen(const MirFuncContext *ctx) const
+{
+  off_t off = ctx->get_local_offset(var);
+  ctx->get_builder()->mk_memory_inst(
+      AsmMemoryOp::Store, rs, Register::SP, off);
+}
+
+void MirRematImm::codegen(const MirFuncContext *ctx) const
+{
+  ctx->get_builder()->mk_load_imm_inst(rd, imm);
+}
+
+void MirRematArrayAddr::codegen(const MirFuncContext *ctx) const
+{
+  off_t off = ctx->get_array_offset(id);
+  off += this->off;
+  if (off <= 2047 && off >= -2048) {
+    ctx->get_builder()->mk_binary_imm_inst(
+        AsmBinaryImmOp::Add, rd, Register::SP, off);
+  } else {
+    ctx->get_builder()->mk_load_imm_inst(rd, off);
+    ctx->get_builder()->mk_binary_inst(
+        AsmBinaryOp::Add, rd, rd, Register::SP);
+  }
+}
+
+void MirRematSymbolAddr::codegen(const MirFuncContext *ctx) const
+{
+  ctx->get_builder()->mk_load_addr_inst(rd, sym, off);
+}
 
 bool MirStmt::is_func_call(void) const
 {
@@ -13,12 +52,17 @@ bool MirCallStmt::is_func_call(void) const
   return true;
 }
 
-bool MirStmt::is_mem_store(void) const
+bool MirStmt::maybe_mem_store(void) const
 {
   return false;
 }
 
-bool MirStoreStmt::is_mem_store(void) const
+bool MirCallStmt::maybe_mem_store(void) const
+{
+  return true;
+}
+
+bool MirStoreStmt::maybe_mem_store(void) const
 {
   return true;
 }
@@ -44,6 +88,16 @@ bool MirJumpStmt::is_jump_or_branch(void) const
 }
 
 bool MirBranchStmt::is_jump_or_branch(void) const
+{
+  return true;
+}
+
+bool MirStmt::is_return(void) const
+{
+  return false;
+}
+
+bool MirReturnStmt::is_return(void) const
 {
   return true;
 }
@@ -295,7 +349,7 @@ void MirCallStmt::codegen(
   for (unsigned int i = 0; i < args.size(); ++i)
   {
     Register rs = ctx->get_reg(std::make_pair(id, i + 1));
-    Register rd = static_cast<Register>(i + 1);
+    Register rd = reg_from_arg_id(i + 1);
     ctx->get_builder()->mk_unary_inst(AsmUnaryOp::Mv, rd, rs);
   }
 
@@ -397,24 +451,18 @@ void MirFuncItem::codegen(AsmBuilder *builder)
   unsigned int num_callee_regs = ctx.get_num_callee_regs();
   for (unsigned int i = 0; i < num_callee_regs; ++i)
   {
-    unsigned int regid = i + NR_REG_CALLER;
-    Register rs = static_cast<Register>(regid);
+    Register rs = reg_from_callee_id(i);
     builder->mk_memory_inst(
         AsmMemoryOp::Store, rs, Register::SP,
         ctx.get_callee_reg_offset(i));
   }
 
   for (const auto &store : ctx.get_spill_stores(0))
-  {
-    assert(store.first < num_args);
-    builder->mk_memory_inst(
-        AsmMemoryOp::Store, store.second, Register::SP,
-        ctx.get_local_offset(store.first));
-  }
+    store->codegen(&ctx);
 
   for (unsigned int i = num_args - 1; ~i; --i)
   {
-    Register rs = static_cast<Register>(i);
+    Register rs = reg_from_arg_id(i);
     Register rd = ctx.get_reg(std::make_pair(0u, i + 1));
     builder->mk_unary_inst(AsmUnaryOp::Mv, rd, rs);
   }
@@ -424,34 +472,29 @@ void MirFuncItem::codegen(AsmBuilder *builder)
     sorted_labels.emplace_back(labels[i], i);
   std::sort(sorted_labels.begin(), sorted_labels.end());
 
+  Bitset reachable = ctx.calc_reachable();
+
   auto it = sorted_labels.begin();
   for (size_t i = 1; i < stmts.size(); ++i)
   {
     if (it != sorted_labels.end() && it->first == i) {
-      builder->mk_local_label(it->second);
+      if (reachable.get(i))
+        builder->mk_local_label(it->second);
       ++it;
     }
+    if (!reachable.get(i))
+      continue;
+
     stmts[i]->codegen(&ctx, i);
-
     for (const auto &store : ctx.get_spill_stores(i))
-    {
-      builder->mk_memory_inst(
-          AsmMemoryOp::Store, store.second, Register::SP,
-          ctx.get_local_offset(store.first));
-    }
-
+      store->codegen(&ctx);
     for (const auto &load : ctx.get_spill_loads(i))
-    {
-      builder->mk_memory_inst(
-          AsmMemoryOp::Load, load.second, Register::SP,
-          ctx.get_local_offset(load.first));
-    }
+      load->codegen(&ctx);
   }
 
   for (unsigned int i = 0; i < num_callee_regs; ++i)
   {
-    unsigned int regid = i + NR_REG_CALLER;
-    Register rs = static_cast<Register>(regid);
+    Register rs = reg_from_callee_id(i);
     builder->mk_memory_inst(AsmMemoryOp::Load,
         rs, Register::SP, ctx.get_callee_reg_offset(i));
   }

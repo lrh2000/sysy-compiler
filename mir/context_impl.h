@@ -30,24 +30,3 @@ struct MirLoop
   unsigned int head;
   std::vector<unsigned int> tails;
 };
-
-struct MirLocalLiveness
-{
-  MirLocalLiveness(Bitset &&stmts,
-      MirOperands &&defs, MirOperands &&uses,
-      MirLocal local, unsigned int loop, uint32_t color_mask)
-    : stmts(std::move(stmts)),
-      defs(std::move(defs)), uses(std::move(uses)),
-      local(local), loop(loop), color_mask(color_mask),
-      to_spill(false), color(0)
-  {}
-
-  Bitset stmts;
-  MirOperands defs;
-  MirOperands uses;
-  MirLocal local;
-  unsigned int loop;
-  uint32_t color_mask;
-  bool to_spill;
-  uint32_t color;
-};

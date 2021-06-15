@@ -35,7 +35,7 @@ struct MirStmtHash
       variable = it->second;                \
   } while (0);
 
-bool MirStmt::apply_rules(
+bool MirEmptyStmt::apply_rules(
     const std::unordered_map<MirLocal, MirLocal> &rules)
 {
   return false;
@@ -262,6 +262,14 @@ void MirCallStmt::replace(MirLocal local, MirLocal new_local)
       arg = new_local;
 }
 
+bool MirCallStmt::apply_rules(
+    const std::unordered_map<MirLocal, MirLocal> &rules)
+{
+  for (auto &arg : args)
+    replace_if_possible(arg);
+  return false;
+}
+
 void MirBranchStmt::replace(MirLocal local, MirLocal new_local)
 {
   if (src1 == local)
@@ -270,8 +278,22 @@ void MirBranchStmt::replace(MirLocal local, MirLocal new_local)
     src2 = new_local;
 }
 
+bool MirBranchStmt::apply_rules(
+    const std::unordered_map<MirLocal, MirLocal> &rules)
+{
+  replace_if_possible(src1);
+  replace_if_possible(src2);
+  return false;
+}
+
 void MirJumpStmt::replace(MirLocal local, MirLocal new_local)
 { /* nothing */ }
+
+bool MirJumpStmt::apply_rules(
+    const std::unordered_map<MirLocal, MirLocal> &rules)
+{
+  return false;
+}
 
 void MirStoreStmt::replace(MirLocal local, MirLocal new_local)
 {
@@ -279,6 +301,14 @@ void MirStoreStmt::replace(MirLocal local, MirLocal new_local)
     address = new_local;
   if (value == local)
     value = new_local;
+}
+
+bool MirStoreStmt::apply_rules(
+    const std::unordered_map<MirLocal, MirLocal> &rules)
+{
+  replace_if_possible(address);
+  replace_if_possible(value);
+  return false;
 }
 
 void MirLoadStmt::replace(MirLocal local, MirLocal new_local)
@@ -294,15 +324,21 @@ void MirReturnStmt::replace(MirLocal local, MirLocal new_local)
     value = new_local;
 }
 
-MirLocal MirStmt::get_assign_val(void) const
+bool MirReturnStmt::apply_rules(
+    const std::unordered_map<MirLocal, MirLocal> &rules)
+{
+  replace_if_possible(value);
+  return false;
+}
+
+void MirStmt::remove_dest(void)
 {
   abort();
 }
 
-MirLocal MirUnaryStmt::get_assign_val(void) const
+void MirCallStmt::remove_dest(void)
 {
-  assert(op == MirUnaryOp::Nop);
-  return src;
+  dest = ~0u;
 }
 
 Bitset MirFuncContext::identify_invariants(const MirLoop &loop)
@@ -322,7 +358,7 @@ Bitset MirFuncContext::identify_invariants(const MirLoop &loop)
   bool has_mem_store = false;
 
   for (auto stmt : loop.stmts)
-    has_mem_store |= func->stmts[stmt]->is_mem_store();
+    has_mem_store |= func->stmts[stmt]->maybe_mem_store();
 
   for (auto stmt : loop.stmts)
   {
@@ -519,9 +555,10 @@ void MirFuncContext::convert_one_to_ssa(
         stmt_version[++pos] = version_local.size() - 1;
       }
     } else if (stmt_info[pos].def == local) {
-      MirLocal tmp = func->stmts[pos]->get_assign_val();
-      assert(tmp >= func->num_args);
-      version_local.emplace_back(tmp);
+      std::pair<MirLocal, MirLocal> eq;
+      bool ok = func->stmts[pos]->extract_if_assign(eq);
+      assert(ok && eq.second >= func->num_locals);
+      version_local.emplace_back(eq.second);
       stmt_version[pos] = version_local.size() - 1;
     } else {
       unsigned int oldv, cnt = 0;
@@ -571,6 +608,20 @@ void MirFuncContext::convert_one_to_ssa(
       assert(degrees[npos] > 0);
       if (--degrees[npos] == 0)
         queue.push(npos);
+    }
+  }
+
+  if (local == 0) {
+    switch (stmt_version[stmt_info.size() - 1])
+    {
+    case 0:
+      tail_reachable = false;
+      break;
+    case 1:
+      tail_reachable = true;
+      break;
+    default:
+      abort();
     }
   }
 }
@@ -681,7 +732,7 @@ void MirFuncContext::merge_duplicates(void)
       bool found = false;
       for (auto stmt : loop.stmts)
       {
-        if (!func->stmts[stmt]->is_mem_store())
+        if (!func->stmts[stmt]->maybe_mem_store())
           continue;
         found = true;
         break;
@@ -697,7 +748,7 @@ void MirFuncContext::merge_duplicates(void)
         mem_version[++pos] = oldv;
       else
         mem_version[++pos] = ++last_version;
-    } else if (func->stmts[pos]->is_mem_store()) {
+    } else if (func->stmts[pos]->maybe_mem_store()) {
       mem_version[pos] = ++last_version;
     } else {
       unsigned int oldv, cnt = 0;
@@ -780,31 +831,16 @@ void MirFuncContext::merge_duplicates(void)
 
 void MirFuncContext::remove_unused(void)
 {
-  std::vector<size_t> use_counters;
   std::vector<size_t> tmp_definitions;
   std::vector<std::vector<size_t>> phi_definitions;
-  Bitset removed_stmts(stmt_info.size());
 
-  use_counters.resize(num_phis - func->num_locals);
   tmp_definitions.resize(func->num_temps - func->num_locals);
   phi_definitions.resize(num_phis - func->num_temps);
 
   for (size_t i = 0; i < stmt_info.size(); ++i)
   {
-    std::vector<MirLocal> uses = func->stmts[i]->get_uses();
-    for (auto use : uses)
-    {
-      if (use < func->num_args)
-        continue;
-      if (use == ~0u)
-        continue;
-      assert(use >= func->num_locals && use < num_phis);
-      ++use_counters[use - func->num_locals];
-    }
-
     if (stmt_info[i].def == ~0u)
       continue;
-
     if (stmt_info[i].def < func->num_temps) {
       assert(stmt_info[i].def >= func->num_locals);
       tmp_definitions[stmt_info[i].def - func->num_locals] = i;
@@ -815,18 +851,33 @@ void MirFuncContext::remove_unused(void)
   }
 
   size_t num_temps = func->num_temps - func->num_locals;
-
+  Bitset used_defs(num_phis - func->num_locals);
   std::queue<size_t> tmp_queue;
   std::queue<size_t> phi_queue;
 
-  for (size_t i = 0; i < use_counters.size(); ++i)
+  for (size_t i = 0; i < stmt_info.size(); ++i)
   {
-    if (use_counters[i] > 0)
+    if (!func->stmts[i]->is_return()
+        && !stmt_info[i].func_call
+        && stmt_info[i].def != ~0u)
       continue;
-    if (i >= num_temps)
-      phi_queue.push(i - num_temps);
-    else
-      tmp_queue.push(i);
+    for (auto use : func->stmts[i]->get_uses())
+    {
+      if (use == ~0u)
+        continue;
+      if (use < func->num_args)
+        continue;
+      assert(use >= func->num_locals);
+      use -= func->num_locals;
+
+      if (used_defs.get(use))
+        continue;
+      used_defs.set(use);
+      if (use < num_temps)
+        tmp_queue.push(use);
+      else
+        phi_queue.push(use - num_temps);
+    }
   }
 
   std::vector<size_t> unary_vec;
@@ -855,20 +906,35 @@ void MirFuncContext::remove_unused(void)
       std::vector<MirLabel> uses = func->stmts[stmt]->get_uses();
       for (auto use : uses)
       {
-        if (use < func->num_args)
-          continue;
         if (use == ~0u)
           continue;
-        if (--use_counters[use - func->num_locals] > 0)
+        if (use < func->num_args)
           continue;
+        assert(use >= func->num_locals);
         use -= func->num_locals;
+
+        if (used_defs.get(use))
+          continue;
+        used_defs.set(use);
         if (use >= num_temps)
           phi_queue.push(use - num_temps);
         else
           tmp_queue.push(use);
       }
-      removed_stmts.set(stmt);
     }
+  }
+
+  Bitset removed_stmts(stmt_info.size());
+  for (size_t i = 0; i < func->stmts.size(); ++i)
+  {
+    if (stmt_info[i].def == ~0u)
+      continue;
+    if (used_defs.get(stmt_info[i].def - func->num_locals))
+      continue;
+    if (stmt_info[i].func_call)
+      func->stmts[i]->remove_dest();
+    else
+      removed_stmts.set(i);
   }
 
   std::vector<std::unique_ptr<MirStmt>> stmts;
@@ -910,4 +976,27 @@ void MirFuncContext::optimize(void)
   convert_all_to_ssa();
   merge_duplicates();
   remove_unused();
+}
+
+Bitset MirFuncContext::calc_reachable(void)
+{
+  Bitset reachable(stmt_info.size());
+  std::queue<size_t> queue;
+  queue.push(0);
+  reachable.set(0);
+
+  while (!queue.empty())
+  {
+    size_t pos = queue.front();
+    queue.pop();
+    for (size_t npos : stmt_info[pos].next)
+    {
+      if (!reachable.get(npos)) {
+        reachable.set(npos);
+        queue.push(npos);
+      }
+    }
+  }
+
+  return reachable;
 }

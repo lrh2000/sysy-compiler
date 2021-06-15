@@ -138,6 +138,21 @@ std::unique_ptr<HirExpr> AstLvalExpr::translate(AstContext *ctx)
       || ty_base->get_kind() == AstTypeKind::Array
       || ty_base->get_kind() == AstTypeKind::Ptr) {
     auto addr = into_addr(ctx);
+    switch (ty_base->get_kind())
+    {
+    case AstTypeKind::Array:
+      if (static_cast<const AstArrayType *>(ty_base)->get_shape().size()
+          != indices.size())
+        return addr;
+      break;
+    case AstTypeKind::Ptr:
+      if (static_cast<const AstArrayType *>(ty_base)->get_shape().size() + 1
+          != indices.size())
+        return addr;
+      break;
+    default:
+      break;
+    }
     return std::make_unique<HirUnaryExpr>(
         HirUnaryOp::Load, std::move(addr));
   } else if (ty_base->get_kind() == AstTypeKind::Int) {

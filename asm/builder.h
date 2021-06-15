@@ -39,6 +39,21 @@ public:
   void mk_binary_inst(AsmBinaryOp op,
       Register rd, Register rs1, Register rs2)
   {
+    if (rd == Register::X0)
+      return;
+    switch (op)
+    {
+    case AsmBinaryOp::Add:
+      if (rd == rs2 && rs1 == Register::X0)
+        return;
+      /* fallthrough */
+    case AsmBinaryOp::Sub:
+      if (rd == rs1 && rs2 == Register::X0)
+        return;
+      break;
+    default:
+      break;
+    }
     lines.emplace_back(
         std::make_unique<AsmBinaryInst>(op, rd, rs1, rs2));
   }
@@ -46,19 +61,43 @@ public:
   void mk_binary_imm_inst(AsmBinaryImmOp op,
       Register rd, Register rs1, AsmImm rs2)
   {
+    if (rd == Register::X0)
+      return;
+    switch (op)
+    {
+    case AsmBinaryImmOp::Add:
+    case AsmBinaryImmOp::Shift:
+      if (rd == rs1 && rs2 == 0)
+        return;
+      break;
+    default:
+      break;
+    }
     lines.emplace_back(
         std::make_unique<AsmBinaryImmInst>(op, rd, rs1, rs2));
   }
 
-  void mk_unary_inst(AsmUnaryOp op,
-      Register reg, Register addr)
+  void mk_unary_inst(AsmUnaryOp op, Register rd, Register rs)
   {
+    if (rd == Register::X0)
+      return;
+    switch (op)
+    {
+    case AsmUnaryOp::Mv:
+      if (rd == rs)
+        return;
+      break;
+    default:
+      break;
+    }
     lines.emplace_back(
-        std::make_unique<AsmUnaryInst>(op, reg, addr));
+        std::make_unique<AsmUnaryInst>(op, rd, rs));
   }
 
   void mk_load_imm_inst(Register rd, AsmImm imm)
   {
+    if (rd == Register::X0)
+      return;
     lines.emplace_back(
         std::make_unique<AsmLoadImmInst>(rd, imm));
   }
@@ -66,6 +105,8 @@ public:
   void mk_load_addr_inst(Register rd,
       Symbol sym, AsmImm off)
   {
+    if (rd == Register::X0)
+      return;
     lines.emplace_back(
         std::make_unique<AsmLoadAddrInst>(rd, sym, off));
   }
@@ -116,5 +157,5 @@ private:
 };
 
 inline AsmFile::AsmFile(AsmBuilder &&builder)
-  : lines(std::move(builder.lines))
+  : lines(std::move(builder.lines)), num_labels(builder.label_tail)
 {}

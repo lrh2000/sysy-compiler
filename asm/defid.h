@@ -12,4 +12,7 @@ private:
   {}
 
   friend class AsmBuilder;
+  friend class AsmLocalLabel;
+  friend class AsmJumpInst;
+  friend class AsmBranchInst;
 };

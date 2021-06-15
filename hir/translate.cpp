@@ -43,8 +43,13 @@ MirLocal HirLiteralExpr::translate(MirFuncBuilder *builder)
 
 void HirLiteralExpr::translate(MirFuncBuilder *builder, MirLocal dest)
 {
-  builder->add_statement(
-      std::make_unique<MirImmStmt>(dest, literal));
+  if (literal == 0) {
+    builder->add_statement(
+        std::make_unique<MirUnaryStmt>(dest, ~0u, MirUnaryOp::Nop));
+  } else {
+    builder->add_statement(
+        std::make_unique<MirImmStmt>(dest, literal));
+  }
 }
 
 void HirUnaryExpr::translate(MirFuncBuilder *builder, MirLocal dest)
@@ -333,8 +338,15 @@ void HirExprStmt::translate(MirFuncBuilder *builder)
 
 void HirAssignStmt::translate(MirFuncBuilder *builder)
 {
-  MirLocal temp = builder->new_temp();
-  rhs->translate(builder, temp);
+  MirLocal temp;
+
+  if (rhs->is_literal() && rhs->get_literal() == 0) {
+    temp = ~0u;
+  } else {
+    temp = builder->new_temp();
+    rhs->translate(builder, temp);
+  }
+
   builder->add_statement(
       std::make_unique<MirUnaryStmt>((MirLocal) lhs, temp, MirUnaryOp::Nop));
 }

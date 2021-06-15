@@ -4,6 +4,7 @@
 #include <ostream>
 #include <unordered_map>
 #include <cassert>
+#include <memory>
 #include "defid.h"
 #include "mir.h"
 #include "../asm/register.h"
@@ -17,11 +18,89 @@ struct MirStmtInfo;
 
 class AsmBuilder;
 class Bitset;
+class MirFuncContext;
+
+class MirSpillOp
+{
+public:
+  virtual void codegen(const MirFuncContext *ctx) const = 0;
+};
+
+class MirSpillLoad :public MirSpillOp
+{
+public:
+  MirSpillLoad(Register rd, MirLocal var)
+    : rd(rd), var(var)
+  {}
+
+  void codegen(const MirFuncContext *ctx) const override;
+
+private:
+  Register rd;
+  MirLocal var;
+};
+
+class MirSpillStore :public MirSpillOp
+{
+public:
+  MirSpillStore(Register rs, MirLocal var)
+    : rs(rs), var(var)
+  {}
+
+  void codegen(const MirFuncContext *ctx) const override;
+
+private:
+  Register rs;
+  MirLocal var;
+};
+
+class MirRematImm :public MirSpillOp
+{
+public:
+  MirRematImm(Register rd, ssize_t imm)
+    : rd(rd), imm(imm)
+  {}
+
+  void codegen(const MirFuncContext *ctx) const override;
+
+private:
+  Register rd;
+  ssize_t imm;
+};
+
+class MirRematArrayAddr :public MirSpillOp
+{
+public:
+  MirRematArrayAddr(Register rd, MirArray id, off_t off)
+    : rd(rd), id(id), off(off)
+  {}
+
+  void codegen(const MirFuncContext *ctx) const override;
+
+private:
+  Register rd;
+  MirArray id;
+  off_t off;
+};
+
+class MirRematSymbolAddr :public MirSpillOp
+{
+public:
+  MirRematSymbolAddr(Register rd, Symbol sym, off_t off)
+    : rd(rd), sym(sym), off(off)
+  {}
+
+  void codegen(const MirFuncContext *ctx) const override;
+
+private:
+  Register rd;
+  Symbol sym;
+  off_t off;
+};
 
 class MirFuncContext
 {
-  typedef std::pair<MirLocal, Register> SpillOp;
-  typedef std::vector<SpillOp> SpillOps;
+  typedef std::vector<std::unique_ptr<MirSpillOp>> SpillOps;
   typedef std::unordered_map<unsigned int, SpillOps> SpillPosAndOps;
 
   typedef std::pair<MirLocal, MirLocal> PhiOp;
@@ -35,6 +114,8 @@ public:
   void prepare(void);
   void optimize(void);
   void reg_alloc(void);
+
+  Bitset calc_reachable(void);
 
   unsigned int label_to_stmt_id(MirLabel label) const
   {
@@ -102,10 +183,11 @@ public:
   }
 
 private:
-  void build_liveness_one(MirLocal local);
+  bool build_liveness_one(MirLocal local);
   void build_liveness_all(void);
 
-  void spill_liveness_one(const MirLocalLiveness &ll);
+  void spill_liveness_one(
+      MirLocalLiveness &ll, std::vector<MirLocalLiveness> &buf);
   void spill_liveness_all(void);
 
   bool graph_try_color(void);
@@ -114,7 +196,7 @@ private:
   void fill_stmt_info(void);
   void fill_defs_and_uses(void);
 
-  void finish_liveness(const MirLocalLiveness &ll);
+  void finish_liveness(const MirLocalLiveness &ll, uint32_t color);
   void identify_loops(void);
 
   Bitset identify_invariants(const MirLoop &loop);
@@ -126,6 +208,8 @@ private:
 
   void merge_duplicates(void);
   void remove_unused(void);
+
+  void spill_regs_cross_func(void);
 
   MirLocal new_phi(void)
   {
@@ -149,10 +233,11 @@ private:
   SpillPosAndOps spill_stores;
 
   unsigned int num_callee_regs;
-
   mutable AsmBuilder *builder;
- 
   unsigned int num_phis;
+  bool tail_reachable;
 
   static const SpillOps g_no_spill_ops;
+
+  friend struct MirLocalLiveness;
 };

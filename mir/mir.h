@@ -38,6 +38,8 @@ enum class MirLogicalOp
   Ne,
 };
 
+enum class Register;
+
 class MirFuncBuilder;
 class MirBuilder;
 
@@ -45,6 +47,8 @@ class MirFuncContext;
 
 class AsmFile;
 class AsmBuilder;
+
+class MirSpillOp;
 
 class MirStmt
 {
@@ -55,18 +59,23 @@ public:
   virtual std::vector<MirLocal> get_uses(void) const;
 
   virtual bool is_func_call(void) const;
-  virtual bool is_mem_store(void) const;
   virtual bool is_mem_load(void) const;
   virtual bool is_jump_or_branch(void) const;
+  virtual bool maybe_mem_store(void) const;
+  virtual bool is_return(void) const;
+
+  virtual bool extract_if_assign(std::pair<MirLocal, MirLocal> &eq) const;
+
+  virtual bool can_rematerialize(void) const;
+  virtual std::unique_ptr<MirSpillOp> rematerialize(Register rd) const;
 
   virtual bool apply_rules(
-    const std::unordered_map<MirLabel, MirLabel> &rules);
+    const std::unordered_map<MirLabel, MirLabel> &rules) = 0;
   virtual size_t hash(void) const;
   virtual bool equal(const MirStmt *other) const;
 
-  virtual MirLocal get_assign_val(void) const;
-
   virtual void replace(MirLocal local, MirLocal new_local) = 0;
+  virtual void remove_dest(void);
 
   virtual void codegen(const MirFuncContext *ctx, unsigned int id) const = 0;
 };
@@ -76,6 +85,8 @@ class MirEmptyStmt :public MirStmt
 public:
   MirEmptyStmt(void) {}
 
+  bool apply_rules(
+    const std::unordered_map<MirLabel, MirLabel> &rules) override;
   void replace(MirLocal local, MirLocal new_local) override;
 
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
@@ -94,6 +105,9 @@ public:
     const std::unordered_map<MirLabel, MirLabel> &rules) override;
   size_t hash(void) const override;
   bool equal(const MirStmt *other) const override;
+
+  bool can_rematerialize(void) const override;
+  std::unique_ptr<MirSpillOp> rematerialize(Register rd) const override;
 
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
 
@@ -119,6 +133,9 @@ public:
   size_t hash(void) const override;
   bool equal(const MirStmt *other) const override;
 
+  bool can_rematerialize(void) const override;
+  std::unique_ptr<MirSpillOp> rematerialize(Register rd) const override;
+
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
 
   MirLocal get_def(void) const override;
@@ -142,6 +159,9 @@ public:
     const std::unordered_map<MirLabel, MirLabel> &rules) override;
   size_t hash(void) const override;
   bool equal(const MirStmt *other) const override;
+
+  bool can_rematerialize(void) const override;
+  std::unique_ptr<MirSpillOp> rematerialize(Register rd) const override;
 
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
 
@@ -215,6 +235,8 @@ public:
 
   void replace(MirLocal local, MirLocal new_local) override;
 
+  bool extract_if_assign(std::pair<MirLocal, MirLocal> &eq) const override;
+
   bool apply_rules(
     const std::unordered_map<MirLabel, MirLabel> &rules) override;
   size_t hash(void) const override;
@@ -224,8 +246,6 @@ public:
 
   MirLocal get_def(void) const override;
   std::vector<MirLocal> get_uses(void) const override;
-
-  MirLocal get_assign_val(void) const override;
 
 private:
   MirLocal dest;
@@ -241,9 +261,14 @@ public:
     : dest(dest), name(name), args(std::move(args))
   {}
 
+  bool apply_rules(
+    const std::unordered_map<MirLabel, MirLabel> &rules) override;
+
   bool is_func_call(void) const override;
-  
+  bool maybe_mem_store(void) const override;
+
   void replace(MirLocal local, MirLocal new_local) override;
+  void remove_dest(void) override;
 
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
 
@@ -263,6 +288,9 @@ public:
       MirLocal src2, MirLabel target, MirLogicalOp op)
     : src1(src1), src2(src2), target(target), op(op)
   {}
+
+  bool apply_rules(
+    const std::unordered_map<MirLabel, MirLabel> &rules) override;
 
   void replace(MirLocal local, MirLocal new_local) override;
 
@@ -289,6 +317,8 @@ public:
     : target(target)
   {}
 
+  bool apply_rules(
+    const std::unordered_map<MirLabel, MirLabel> &rules) override;
   void replace(MirLocal local, MirLocal new_local) override;
 
   std::vector<unsigned int>
@@ -309,13 +339,15 @@ public:
     : value(value), address(address), offset(offset)
   {}
 
+  bool apply_rules(
+    const std::unordered_map<MirLabel, MirLabel> &rules) override;
   void replace(MirLocal local, MirLocal new_local) override;
 
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
 
   std::vector<MirLocal> get_uses(void) const override;
 
-  bool is_mem_store(void) const override;
+  bool maybe_mem_store(void) const override;
 
 private:
   MirLocal value;
@@ -361,6 +393,10 @@ public:
     : has_value(true), value(value)
   {}
 
+  bool is_return(void) const override;
+
+  bool apply_rules(
+    const std::unordered_map<MirLabel, MirLabel> &rules) override;
   void replace(MirLocal local, MirLocal new_local) override;
 
   std::vector<unsigned int>

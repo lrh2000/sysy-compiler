@@ -60,12 +60,22 @@ enum class AsmIntDirType
   Skip,
 };
 
+struct AsmLabelInfo;
+
 class AsmBuilder;
 
 class AsmLine
 {
 public:
   virtual void print(std::ostream &os) const = 0;
+
+  virtual bool is_label(void) const;
+  virtual void fill_label_info(size_t pos, AsmLabelInfo *info) const;
+  virtual void mark_label_used(std::vector<bool> &used_labels) const;
+  virtual std::unique_ptr<AsmLine> clone_if_jump(void) const;
+  virtual AsmLine *update_label(
+      const std::vector<size_t> &rules,
+      const std::vector<bool> &used);
 };
 
 class AsmGlobalLabel :public AsmLine
@@ -104,6 +114,12 @@ public:
   {}
 
   void print(std::ostream &os) const override;
+
+  bool is_label(void) const override;
+  void fill_label_info(size_t pos, AsmLabelInfo *info) const override;
+  AsmLine *update_label(
+      const std::vector<size_t> &rules,
+      const std::vector<bool> &used) override;
 
 private:
   AsmLabelId labelid;
@@ -227,6 +243,13 @@ public:
 
   void print(std::ostream &os) const override;
 
+  void fill_label_info(size_t pos, AsmLabelInfo *info) const override;
+  void mark_label_used(std::vector<bool> &used_labels) const override;
+  std::unique_ptr<AsmLine> clone_if_jump(void) const override;
+  AsmLine *update_label(
+      const std::vector<size_t> &rules,
+      const std::vector<bool> &used) override;
+
 private:
   AsmLabelId target;
 };
@@ -240,6 +263,11 @@ public:
   {}
 
   void print(std::ostream &os) const override;
+
+  void mark_label_used(std::vector<bool> &used_labels) const override;
+  AsmLine *update_label(
+      const std::vector<size_t> &rules,
+      const std::vector<bool> &used) override;
 
 private:
   AsmBranchOp op;
@@ -257,6 +285,8 @@ public:
 
   void print(std::ostream &os) const override;
 
+  std::unique_ptr<AsmLine> clone_if_jump(void) const override;
+
 private:
   Register rs;
 };
@@ -273,8 +303,11 @@ class AsmFile
 public:
   AsmFile(AsmBuilder &&builder);
 
+  void relabel(void);
+
 private:
   std::vector<std::unique_ptr<AsmLine>> lines;
+  size_t num_labels;
 
   friend std::ostream &operator <<(std::ostream &os, const AsmFile &file);
 };

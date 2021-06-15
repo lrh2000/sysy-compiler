@@ -41,6 +41,7 @@ int main(int argc, char **argv)
   auto mir = hir->translate();
   auto asm_ = mir->codegen();
 
+  asm_->relabel();
   std::cout << *asm_;
 
   return 0;

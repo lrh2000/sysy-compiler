@@ -16,6 +16,7 @@ public:
       array_offs(std::move(array_offs)), name(name)
   {
     stmts.emplace_back(std::make_unique<MirEmptyStmt>());
+    stmts.emplace_back(std::make_unique<MirEmptyStmt>());
   }
 
   MirLabel new_label(void)

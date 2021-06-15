@@ -113,12 +113,28 @@ public:
     return *this;
   }
 
+  Bitset &operator &=(const Bitset &other)
+  {
+    assert(num_bits == other.num_bits);
+    for (size_t i = 0; i < data.size(); ++i)
+      data[i] &= other.data[i];
+    return *this;
+  }
+
   Bitset &operator -=(const Bitset &other)
   {
     assert(num_bits == other.num_bits);
     for (size_t i = 0; i < data.size(); ++i)
       data[i] &= ~other.data[i];
     return *this;
+  }
+
+  operator bool(void) const
+  {
+    for (size_t i = 0; i < data.size(); ++i)
+      if (data[i])
+        return true;
+    return false;
   }
 
   BitsetIterator begin(void) const

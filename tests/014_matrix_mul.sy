@@ -1,0 +1,20 @@
+void matmul(int md[][4], int ms1[][4], int ms2[][4])
+{
+  int i = 0;
+  while (i < 4)
+  {
+    int j = 0;
+    while (j < 4)
+    {
+      md[i][j] = 0;
+      int k = 0;
+      while (k < 4)
+      {
+        md[i][j] = md[i][j] + ms1[i][k] * ms2[i][k];
+        k = k + 1;
+      }
+      j = j + 1;
+    }
+    i = i + 1;
+  }
+}

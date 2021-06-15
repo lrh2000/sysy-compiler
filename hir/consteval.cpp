@@ -267,6 +267,10 @@ std::unique_ptr<HirExpr> HirBinaryExpr::const_eval(void)
       if (val == 1 || lhs->const_mul(val))
         return std::move(lhs);
       break;
+    case HirBinaryOp::Div:
+      if (val == 1)
+        return std::move(lhs);
+      break;
     case HirBinaryOp::Mod:
       if (val == 1)
         return std::make_unique<HirLiteralExpr>(0);
@@ -369,11 +373,11 @@ std::unique_ptr<HirCond> HirBinaryCond::const_eval(void)
 
   if (lhs->is_literal()) {
     Literal val = lhs->get_literal();
-    if (rhs->const_add(-val)) {
+    if (val && rhs->const_add(-val)) {
       lhs = std::make_unique<HirLiteralExpr>(0);
       return nullptr;
     }
-    if (val <= 2048 && val >= -2047) {
+    if (val && val <= 2048 && val >= -2047) {
       rhs = std::make_unique<HirBinaryExpr>(
           HirBinaryOp::Add,
           std::move(rhs),
@@ -383,11 +387,11 @@ std::unique_ptr<HirCond> HirBinaryCond::const_eval(void)
     }
   } else if (rhs->is_literal()) {
     Literal val = rhs->get_literal();
-    if (lhs->const_add(-val)) {
+    if (val && lhs->const_add(-val)) {
       rhs = std::make_unique<HirLiteralExpr>(0);
       return nullptr;
     }
-    if (val <= 2048 && val >= -2047) {
+    if (val && val <= 2048 && val >= -2047) {
       lhs = std::make_unique<HirBinaryExpr>(
           HirBinaryOp::Add,
           std::move(lhs),
