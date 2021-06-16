@@ -2,7 +2,7 @@ ROOTDIR := .
 TESTDIR := tests
 
 SRCS    := $(shell find $(ROOTDIR) -name "*.cpp")
-TESTS   := $(shell find $(TESTDIR) -name "*.sy")
+TESTS   := $(shell find $(TESTDIR) -name "*.sy" | sort)
 TARGET  := ./sysyc
 
 CXX      := g++
@@ -12,7 +12,7 @@ LDFLFAGS :=
 
 TESTARCH    := -march=rv32im -mabi=ilp32
 TESTCC      := riscv64-elf-gcc
-TESTCFLAGS  := -Wall -Wno-missing-braces -O3 $(TESTARCH)
+TESTCFLAGS  := -D__SYSY_TEST__ -Wall -O3 $(TESTARCH)
 TESTLD      := riscv64-elf-gcc 
 TESTLDFLAGS := $(TESTARCH)
 TESTAS      := riscv64-elf-as

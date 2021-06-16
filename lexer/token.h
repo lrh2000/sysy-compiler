@@ -46,7 +46,18 @@
   LIST_TOKEN("while", While)               \
   LIST_TOKEN("break", Break)               \
   LIST_TOKEN("continue", Continue)         \
-  LIST_TOKEN("return", Return)
+  LIST_TOKEN("return", Return)             \
+                                           \
+  LIST_TOKEN("getint", GetInt)             \
+  LIST_TOKEN("putint", PutInt)             \
+  LIST_TOKEN("getch", GetCh)               \
+  LIST_TOKEN("putch", PutCh)               \
+  LIST_TOKEN("getarray", GetArray)         \
+  LIST_TOKEN("putarray", PutArray)         \
+  LIST_TOKEN("starttime", StartTime)       \
+  LIST_TOKEN("stoptime", StopTime)               \
+  LIST_TOKEN("_sysy_starttime", SysyStartTime)  \
+  LIST_TOKEN("_sysy_stoptime", SysyStopTime)
 
 typedef unsigned int TokenKind;
 
@@ -68,19 +79,27 @@ public:
     ++line;
   }
 
+  unsigned int get_line(void) const
+  {
+    return line;
+  }
+
+  unsigned int get_column(void) const
+  {
+    return column;
+  }
+
 private:
   unsigned int line;
   unsigned int column;
-
-  friend std::ostream &operator <<(std::ostream &os, Location loc);
 };
 
 extern inline std::ostream &operator <<(std::ostream &os, Location loc)
 {
   os << "(line "
-     << loc.line
+     << loc.get_line()
      << ", column "
-     << loc.column
+     << loc.get_column()
      << ")";
   return os;
 }
@@ -94,7 +113,7 @@ struct Token
     LIST_TOKENS
 #undef LIST_TOKEN
 
-    Ident,
+    Ident = GetInt,
   };
 
   const TokenKind kind;

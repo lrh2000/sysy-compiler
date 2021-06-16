@@ -134,7 +134,9 @@ std::unique_ptr<HirExpr> AstLvalExpr::translate(AstContext *ctx)
 {
   auto ty_base = ctx->def_get_type(ref);
 
-  if ((ty_base->get_kind() == AstTypeKind::Int && ref.is_global())
+  if ((ty_base->get_kind() == AstTypeKind::Int
+        && ref.is_global()
+        && !static_cast<const AstIntType *>(ty_base)->is_const())
       || ty_base->get_kind() == AstTypeKind::Array
       || ty_base->get_kind() == AstTypeKind::Ptr) {
     auto addr = into_addr(ctx);
@@ -440,53 +442,59 @@ static void fill_while_setting(
 
 void AstDeclStmt::translate(AstContext *ctx, HirFuncBuilder *builder)
 {
-  auto ty_base = ctx->def_get_type(def);
+  for (size_t i = 0; i < sym.size(); ++i)
+  {
+    auto ty_base = ctx->def_get_type(def[i]);
 
-  if (ty_base->get_kind() == AstTypeKind::Int) {
-    auto ty = static_cast<const AstIntType *>(ty_base);
-    if (ty->is_const())
-      return;
+    if (ty_base->get_kind() == AstTypeKind::Int) {
+      auto ty = static_cast<const AstIntType *>(ty_base);
+      if (ty->is_const())
+        continue;
 
-    HirLocalId localid = builder->new_local();
-    ctx->def_set_localid(def, localid);
-    if (!init)
-      return;
-
-    auto collected = init->collect(std::vector<unsigned int>());
-    assert(collected.size() == 1 && collected[0].first == 0);
-    auto hir_expr = collected[0].second->translate(ctx);
-    auto hir_stmt =
-      std::make_unique<HirAssignStmt>(localid, std::move(hir_expr));
-    builder->add_statement(std::move(hir_stmt));
-  } else if (ty_base->get_kind() == AstTypeKind::Array) {
-    auto ty = static_cast<const AstArrayType *>(ty_base);
-
-    if (ty->is_const()) {
-      auto collected = init->collect_const(ctx, ty->get_shape());
-      auto symbol = def.make_unique_symbol();
-      ctx->def_set_symbol(def, symbol);
-      builder->add_item(std::make_unique<HirRodataItem>(
-            symbol, ty->num_elems(), std::move(collected)));
+      HirLocalId localid = builder->new_local();
+      ctx->def_set_localid(def[i], localid);
+      if (!init[i])
+        continue;
+  
+      auto collected = init[i]->collect(std::vector<unsigned int>());
+      assert(collected.size() == 1 && collected[0].first == 0);
+      auto hir_expr = collected[0].second->translate(ctx);
+      auto hir_stmt =
+        std::make_unique<HirAssignStmt>(localid, std::move(hir_expr));
+      builder->add_statement(std::move(hir_stmt));
+    } else if (ty_base->get_kind() == AstTypeKind::Array) {
+      auto ty = static_cast<const AstArrayType *>(ty_base);
+  
+      if (ty->is_const()) {
+        auto collected = init[i]->collect_const(ctx, ty->get_shape());
+        auto symbol = def[i].make_unique_symbol();
+        ctx->def_set_symbol(def[i], symbol);
+        builder->add_item(std::make_unique<HirRodataItem>(
+              symbol, ty->num_elems(), std::move(collected)));
+      } else {
+        HirArrayId arrayid = builder->new_array(ty->num_elems());
+        ctx->def_set_arrayid(def[i], arrayid);
+        if (!init[i])
+          continue;
+  
+        auto collected = init[i]->collect(ty->get_shape());
+        assert(collected.size() <= ty->num_elems());
+  
+        unsigned int size = ty->num_elems();
+        if (collected.size() < size / 2 && size > 16) {
+          fill_and_set(ctx, builder,
+              arrayid, size, std::move(collected));
+        } else {
+          fill_while_setting(ctx, builder,
+              arrayid, size, std::move(collected));
+        }
+      }
     } else {
-      HirArrayId arrayid = builder->new_array(ty->num_elems());
-      ctx->def_set_arrayid(def, arrayid);
-      if (!init)
-        return;
-
-      auto collected = init->collect(ty->get_shape());
-      assert(collected.size() <= ty->num_elems());
-
-      unsigned int size = ty->num_elems();
-      if (collected.size() < size / 2 && size > 16)
-        fill_and_set(ctx, builder, arrayid, size, std::move(collected));
-      else
-        fill_while_setting(ctx, builder, arrayid, size, std::move(collected));
+      abort();
     }
-  } else {
-    abort();
   }
 }
-
+  
 void AstAssignStmt::translate(AstContext *ctx, HirFuncBuilder *builder)
 {
   auto hir_rhs = rhs->translate(ctx);
@@ -550,7 +558,13 @@ void AstContinueStmt::translate(AstContext *ctx, HirFuncBuilder *builder)
 void AstEmptyStmt::translate(AstContext *ctx, HirFuncBuilder *builder)
 { /* nothing */ }
 
-std::unique_ptr<HirItem> AstFuncItem::translate(AstContext *ctx)
+size_t AstFuncItem::num_items(void) const
+{
+  return 1;
+}
+
+std::unique_ptr<HirItem>
+AstFuncItem::translate(AstContext *ctx, size_t i)
 {
   std::vector<AstStmt> hir_stmts;
   HirFuncBuilder builder(args.size());
@@ -564,41 +578,47 @@ std::unique_ptr<HirItem> AstFuncItem::translate(AstContext *ctx)
   return std::make_unique<HirFuncItem>(std::move(builder), sym);
 }
 
-std::unique_ptr<HirItem>
-AstDeclItem::translate(AstContext *ctx)
+size_t AstDeclItem::num_items(void) const
 {
-  auto ty_base = ctx->def_get_type(def);
+  return sym.size();
+}
+
+std::unique_ptr<HirItem>
+AstDeclItem::translate(AstContext *ctx, size_t i)
+{
+  auto ty_base = ctx->def_get_type(def[i]);
 
   if (ty_base->get_kind() == AstTypeKind::Int) {
     auto ty = static_cast<const AstIntType *>(ty_base);
     if (ty->is_const())
       return nullptr;
-    ctx->def_set_symbol(def, sym);
+    ctx->def_set_symbol(def[i], sym[i]);
 
-    if (init != nullptr) {
-      auto collected = init->collect_const(ctx, std::vector<unsigned int>());
+    if (init[i] != nullptr) {
+      auto collected =
+        init[i]->collect_const(ctx, std::vector<unsigned int>());
       assert(collected.size() == 1 && collected[0].first == 0);
-      return std::make_unique<HirDataItem>(sym, 1, std::move(collected));
+      return std::make_unique<HirDataItem>(sym[i], 1, std::move(collected));
     }
 
-    return std::make_unique<HirBssItem>(sym, 1);
+    return std::make_unique<HirBssItem>(sym[i], 1);
   } else if (ty_base->get_kind() == AstTypeKind::Array) {
     auto ty = static_cast<const AstArrayType *>(ty_base);
     auto sz = ty->num_elems();
-    ctx->def_set_symbol(def, sym);
+    ctx->def_set_symbol(def[i], sym[i]);
 
-    if (init == nullptr) {
+    if (init[i] == nullptr) {
       assert(!ty->is_const());
-      return std::make_unique<HirBssItem>(sym, sz);
+      return std::make_unique<HirBssItem>(sym[i], sz);
     }
-    auto collected = init->collect_const(ctx, ty->get_shape());
+    auto collected = init[i]->collect_const(ctx, ty->get_shape());
 
     if (ty->is_const())
-      return std::make_unique<HirRodataItem>(sym, sz, std::move(collected));
+      return std::make_unique<HirRodataItem>(sym[i], sz, std::move(collected));
     else if (collected.size() == 0)
-      return std::make_unique<HirBssItem>(sym, sz);
+      return std::make_unique<HirBssItem>(sym[i], sz);
     else
-      return std::make_unique<HirDataItem>(sym, sz, std::move(collected));
+      return std::make_unique<HirDataItem>(sym[i], sz, std::move(collected));
   } else {
     abort();
   }
@@ -616,9 +636,13 @@ std::unique_ptr<HirCompUnit> AstCompUnit::translate(AstContext *ctx)
 
   for (auto &item : items)
   {
-    auto hir_item = item->translate(ctx);
-    if (hir_item != nullptr)
-      hir_items.emplace_back(std::move(hir_item));
+    size_t num = item->num_items();
+    for (size_t i = 0; i < num; ++i)
+    {
+      auto hir_item = item->translate(ctx, i);
+      if (hir_item != nullptr)
+        hir_items.emplace_back(std::move(hir_item));
+    }
   }
 
   return std::make_unique<HirCompUnit>(std::move(hir_items));

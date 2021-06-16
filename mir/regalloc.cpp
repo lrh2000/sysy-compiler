@@ -341,9 +341,15 @@ void MirFuncContext::identify_loops(void)
   }
 
   for (size_t i = 1; i < loops.size(); ++i)
-    for (size_t j = 0; ~j; --j)
-      if (loops[j].stmts.contain(loops[i].stmts))
+  {
+    for (size_t j = i - 1; ~j; --j)
+    {
+      if (loops[j].stmts.contain(loops[i].stmts)) {
         loops[j].kids.emplace_back(i);
+        break;
+      }
+    }
+  }
 }
 
 void MirFuncContext::prepare(void)
@@ -680,6 +686,20 @@ use_out:
 
   for (const auto &use : spilled_uses)
   {
+    if (stmt_info[use.first].func_call) {
+      Register reg = reg_from_arg_id(use.second);
+      spill_loads[stmt_info[use.first].prev[0]]
+        .emplace_back(
+          std::make_unique<MirSpillLoad>(reg, ll.local));
+      reg_info[use.first][use.second] = reg;
+
+      if (auto it = spilled_locals.find(ll.local);
+          it == spilled_locals.end())
+        spilled_locals[ll.local] = spilled_locals.size();
+
+      continue;
+    }
+
     Bitset stmts(stmt_info.size());
     if (use.first == stmt_info.size() - 1) {
       stmts.set(use.first);
@@ -691,10 +711,6 @@ use_out:
 
     uint32_t hint = 0;
     uint32_t forbid = 0;
-    if (stmt_info[use.first].func_call) {
-      hint |= reg_hint_caller_arg(use.second - 1);
-      forbid |= reg_forbid_caller_arg(use.second - 1);
-    }
     if (use.first == stmt_info.size() - 1) {
       assert(ll.local == 0);
       forbid |= reg_forbid_return_addr();

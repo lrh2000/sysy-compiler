@@ -26,6 +26,8 @@ private:
   template<typename T>
   friend class std::hash;
   friend class Token;
+  friend class AstCompUnit;
+  friend class Parser;
 };
 
 extern inline std::ostream &operator <<(std::ostream &os, Symbol sym)
