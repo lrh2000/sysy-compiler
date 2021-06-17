@@ -477,6 +477,7 @@ void MirFuncContext::move_invariants(void)
     }
   }
   assert(j == sorted_labels.size());
+  assert(stmts.size() == func->stmts.size());
 
   func->stmts = std::move(stmts);
   func->labels = std::move(labels);
@@ -551,7 +552,8 @@ void MirFuncContext::convert_one_to_ssa(
       } else {
         MirLocal phi = new_phi();
         version_local.emplace_back(phi);
-        phi_ops[pos].emplace_back(phi, version_local[oldv]);
+        phi_ops[stmt_info[pos].prev[0]]
+          .emplace_back(phi, version_local[oldv]);
         stmt_version[++pos] = version_local.size() - 1;
       }
     } else if (stmt_info[pos].def == local) {
@@ -647,7 +649,7 @@ void MirFuncContext::convert_all_to_ssa(void)
   {
     bool is_label
       = j < sorted_labels.size() && sorted_labels[j].first == i;
-    bool is_branch = func->stmts[i]->is_jump_or_branch();
+    bool is_branch = func->stmts[i]->maybe_jump();
     bool has_phi = phi_ops.find(i) != phi_ops.end();
     bool keep = stmt_info[i].def >= func->num_locals;
 

@@ -3,12 +3,12 @@
 #include <ostream>
 
 #define NR_REG_CALLER    16
-#define NR_REG_CALLEE    13
-#define NR_REGISTERS     29
+#define NR_REG_CALLEE    12
+#define NR_REGISTERS     28
 
 #define MASK_REG_CALLER  0x0000ffff
-#define MASK_REG_CALLEE  0x1fff0000
-#define MASK_REGISTERS   0x1fffffff
+#define MASK_REG_CALLEE  0x0fff0000
+#define MASK_REGISTERS   0x0fffffff
 
 enum class Register
 {

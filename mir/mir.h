@@ -58,9 +58,10 @@ public:
   virtual MirLocal get_def(void) const;
   virtual std::vector<MirLocal> get_uses(void) const;
 
+  virtual bool is_empty(void) const;
   virtual bool is_func_call(void) const;
   virtual bool is_mem_load(void) const;
-  virtual bool is_jump_or_branch(void) const;
+  virtual bool maybe_jump(void) const;
   virtual bool maybe_mem_store(void) const;
   virtual bool is_return(void) const;
 
@@ -84,6 +85,8 @@ class MirEmptyStmt :public MirStmt
 {
 public:
   MirEmptyStmt(void) {}
+
+  bool is_empty(void) const override;
 
   bool apply_rules(
     const std::unordered_map<MirLabel, MirLabel> &rules) override;
@@ -301,7 +304,7 @@ public:
 
   std::vector<MirLocal> get_uses(void) const override;
 
-  bool is_jump_or_branch(void) const override;
+  bool maybe_jump(void) const override;
 
 private:
   MirLocal src1;
@@ -326,7 +329,7 @@ public:
 
   void codegen(const MirFuncContext *ctx, unsigned int id) const override;
 
-  bool is_jump_or_branch(void) const override;
+  bool maybe_jump(void) const override;
 
 private:
   MirLabel target;
