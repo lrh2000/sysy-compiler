@@ -1,3 +1,5 @@
+#ifdef __SYSY_TEST__
+
 #include <stdio.h>
 #include <assert.h>
 
@@ -22,3 +24,5 @@ int main(void)
   puts(__FILE__ " passed");
   return 0;
 }
+
+#endif

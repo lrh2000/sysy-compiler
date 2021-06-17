@@ -83,30 +83,31 @@ std::unique_ptr<AsmLine> AsmJumpRegInst::clone_if_jump(void) const
 
 AsmLine *AsmLine::update_label(
     const std::vector<size_t> &rules,
-    const std::vector<bool> &used)
+    std::vector<bool> &used)
 {
   return this;
 }
 
 AsmLine *AsmLocalLabel::update_label(
     const std::vector<size_t> &rules,
-    const std::vector<bool> &used)
+    std::vector<bool> &used)
 {
   if (!used[labelid.id])
     return nullptr;
+  used[labelid.id] = false;
   return new AsmLocalLabel(AsmLabelId(rules[labelid.id]));
 }
 
 AsmLine *AsmJumpInst::update_label(
     const std::vector<size_t> &rules,
-    const std::vector<bool> &used)
+    std::vector<bool> &used)
 {
   return new AsmJumpInst(AsmLabelId(rules[target.id]));
 }
 
 AsmLine *AsmBranchInst::update_label(
     const std::vector<size_t> &rules,
-    const std::vector<bool> &used)
+    std::vector<bool> &used)
 {
   return new AsmBranchInst(op, rs1, rs2, AsmLabelId(rules[target.id]));
 }

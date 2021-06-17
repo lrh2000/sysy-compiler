@@ -136,6 +136,23 @@ public:
       Register rs1, Register rs2, MirLabel mirtarget)
   {
     assert(mirtarget < label_tail - label_head);
+
+    if (rs1 == rs2) {
+      switch (op)
+      {
+      case AsmBranchOp::Leq:
+      case AsmBranchOp::Eq:
+        lines.emplace_back(
+            std::make_unique<AsmJumpInst>(
+              AsmLabelId(mirtarget + label_head)));
+        return;
+      case AsmBranchOp::Lt:
+      case AsmBranchOp::Ne:
+        return;
+      }
+      __builtin_unreachable();
+    }
+
     lines.emplace_back(
         std::make_unique<AsmBranchInst>(op, rs1, rs2,
           AsmLabelId(mirtarget + label_head)));

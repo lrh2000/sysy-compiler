@@ -42,6 +42,16 @@ void MirRematSymbolAddr::codegen(const MirFuncContext *ctx) const
   ctx->get_builder()->mk_load_addr_inst(rd, sym, off);
 }
 
+bool MirStmt::is_empty(void) const
+{
+  return false;
+}
+
+bool MirEmptyStmt::is_empty(void) const
+{
+  return true;
+}
+
 bool MirStmt::is_func_call(void) const
 {
   return false;
@@ -77,17 +87,17 @@ bool MirLoadStmt::is_mem_load(void) const
   return true;
 }
 
-bool MirStmt::is_jump_or_branch(void) const
+bool MirStmt::maybe_jump(void) const
 {
   return false;
 }
 
-bool MirJumpStmt::is_jump_or_branch(void) const
+bool MirJumpStmt::maybe_jump(void) const
 {
   return true;
 }
 
-bool MirBranchStmt::is_jump_or_branch(void) const
+bool MirBranchStmt::maybe_jump(void) const
 {
   return true;
 }
@@ -350,6 +360,8 @@ void MirCallStmt::codegen(
   {
     Register rs = ctx->get_reg(std::make_pair(id, i + 1));
     Register rd = reg_from_arg_id(i + 1);
+    assert(static_cast<uint32_t>(rs) < static_cast<uint32_t>(reg_from_arg_id(1))
+        || static_cast<uint32_t>(rs) >= static_cast<uint32_t>(rd));
     ctx->get_builder()->mk_unary_inst(AsmUnaryOp::Mv, rd, rs);
   }
 

@@ -75,7 +75,7 @@ public:
   virtual std::unique_ptr<AsmLine> clone_if_jump(void) const;
   virtual AsmLine *update_label(
       const std::vector<size_t> &rules,
-      const std::vector<bool> &used);
+      std::vector<bool> &used);
 };
 
 class AsmGlobalLabel :public AsmLine
@@ -119,7 +119,7 @@ public:
   void fill_label_info(size_t pos, AsmLabelInfo *info) const override;
   AsmLine *update_label(
       const std::vector<size_t> &rules,
-      const std::vector<bool> &used) override;
+      std::vector<bool> &used) override;
 
 private:
   AsmLabelId labelid;
@@ -248,7 +248,7 @@ public:
   std::unique_ptr<AsmLine> clone_if_jump(void) const override;
   AsmLine *update_label(
       const std::vector<size_t> &rules,
-      const std::vector<bool> &used) override;
+      std::vector<bool> &used) override;
 
 private:
   AsmLabelId target;
@@ -267,7 +267,7 @@ public:
   void mark_label_used(std::vector<bool> &used_labels) const override;
   AsmLine *update_label(
       const std::vector<size_t> &rules,
-      const std::vector<bool> &used) override;
+      std::vector<bool> &used) override;
 
 private:
   AsmBranchOp op;

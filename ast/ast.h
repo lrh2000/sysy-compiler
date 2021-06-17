@@ -363,10 +363,10 @@ protected:
 class AstDeclStmt :public AstStmt
 {
 public:
-  AstDeclStmt(bool is_const, Symbol sym,
-      std::vector<std::unique_ptr<AstExpr>> &&indices,
-      std::unique_ptr<AstInit> &&init)
-    : is_const(is_const), sym(sym),
+  AstDeclStmt(bool is_const, std::vector<Symbol> &&sym,
+      std::vector<std::vector<std::unique_ptr<AstExpr>>> &&indices,
+      std::vector<std::unique_ptr<AstInit>> &&init)
+    : is_const(is_const), sym(std::move(sym)),
       indices(std::move(indices)),
       init(std::move(init)), def()
   {}
@@ -378,11 +378,11 @@ public:
 
 protected:
   bool is_const;
-  Symbol sym;
-  std::vector<std::unique_ptr<AstExpr>> indices;
-  std::unique_ptr<AstInit> init;
+  std::vector<Symbol> sym;
+  std::vector<std::vector<std::unique_ptr<AstExpr>>> indices;
+  std::vector<std::unique_ptr<AstInit>> init;
 
-  AstDefId def;
+  std::vector<AstDefId> def;
 };
 
 class AstAssignStmt :public AstStmt
@@ -541,7 +541,9 @@ public:
   virtual void name_resolve(AstContext *ctx) = 0;
   virtual void type_check(AstContext *ctx) = 0;
 
-  virtual std::unique_ptr<HirItem> translate(AstContext *ctx) = 0;
+  virtual size_t num_items(void) const = 0;
+  virtual std::unique_ptr<HirItem>
+  translate(AstContext *ctx, size_t i) = 0;
 };
 
 class AstFuncItem :public AstItem
@@ -557,7 +559,9 @@ public:
   void name_resolve(AstContext *ctx) override;
   void type_check(AstContext *ctx) override;
 
-  std::unique_ptr<HirItem> translate(AstContext *ctx) override;
+  size_t num_items(void) const override;
+  std::unique_ptr<HirItem>
+  translate(AstContext *ctx, size_t i) override;
 
 protected:
   bool is_void;
@@ -571,25 +575,27 @@ protected:
 class AstDeclItem :public AstItem
 {
 public:
-  AstDeclItem(bool is_const, Symbol sym,
-      std::vector<std::unique_ptr<AstExpr>> &&indices,
-      std::unique_ptr<AstInit> &&init)
-    : is_const(is_const), sym(sym),
+  AstDeclItem(bool is_const, std::vector<Symbol> &&sym,
+      std::vector<std::vector<std::unique_ptr<AstExpr>>> &&indices,
+      std::vector<std::unique_ptr<AstInit>> &&init)
+    : is_const(is_const), sym(std::move(sym)),
       indices(std::move(indices)), init(std::move(init)), def()
   {}
 
   void name_resolve(AstContext *ctx) override;
   void type_check(AstContext *ctx) override;
 
-  std::unique_ptr<HirItem> translate(AstContext *ctx) override;
+  size_t num_items(void) const override;
+  std::unique_ptr<HirItem>
+  translate(AstContext *ctx, size_t i) override;
 
 protected:
   bool is_const;
-  Symbol sym;
-  std::vector<std::unique_ptr<AstExpr>> indices;
-  std::unique_ptr<AstInit> init;
+  std::vector<Symbol> sym;
+  std::vector<std::vector<std::unique_ptr<AstExpr>>> indices;
+  std::vector<std::unique_ptr<AstInit>> init;
 
-  AstDefId def;
+  std::vector<AstDefId> def;
 };
 
 class AstCompUnit
@@ -606,4 +612,6 @@ public:
 
 protected:
   std::vector<std::unique_ptr<AstItem>> items;
+
+  std::vector<AstDefId> prelude_defs;
 };

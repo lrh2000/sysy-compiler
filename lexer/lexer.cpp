@@ -47,8 +47,6 @@ void Lexer::invalid_char_with_reason(const char *reason)
   abort();
 }
 
-
-
 void Lexer::skip_singleline_comment(void)
 {
   while (!eof() && peek() != '\n')
@@ -138,7 +136,7 @@ Token Lexer::lex_ident(void)
   size_t start = pos;
   Location location = loc;
 
-  assert(isalpha(peek()));
+  assert(isalpha(peek()) || peek() == '_');
   do {
     bump();
   } while (!eof()
@@ -284,7 +282,7 @@ retry:
     kind = Token::RightCurly;
     break;
   default:
-    if (isalpha(c))
+    if (isalpha(c) || c == '_')
       return lex_ident();
     else if (isdigit(c))
       return lex_literal();

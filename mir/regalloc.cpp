@@ -336,14 +336,28 @@ void MirFuncContext::identify_loops(void)
     assert(pos > 0);
     stmts.set(pos - 1);
 
+    assert(func->stmts[pos - 1]->is_empty());
+    for (auto tail : tails)
+    {
+      assert(func->stmts[tail]->is_empty());
+      for (auto ppos : stmt_info[tail].prev)
+        assert(stmts.get(ppos));
+    }
+
     loops.emplace_back(std::move(stmts),
         std::vector<unsigned int>(), pos - 1, std::move(tails));
   }
 
   for (size_t i = 1; i < loops.size(); ++i)
-    for (size_t j = 0; ~j; --j)
-      if (loops[j].stmts.contain(loops[i].stmts))
+  {
+    for (size_t j = i - 1; ~j; --j)
+    {
+      if (loops[j].stmts.contain(loops[i].stmts)) {
         loops[j].kids.emplace_back(i);
+        break;
+      }
+    }
+  }
 }
 
 void MirFuncContext::prepare(void)
@@ -495,7 +509,7 @@ bool MirFuncContext::build_liveness_one(MirLocal local)
   }
 
   liveness.emplace_back(
-      std::move(live_stmts), local, hint, forbid, remat);
+      std::move(live_stmts), local, hint, forbid, nullptr);
 
   for (size_t i = 1; i < stmt_info.size(); ++i)
   {
@@ -626,11 +640,11 @@ void MirFuncContext::spill_liveness_one(
       if (!loops[loop_index].stmts.get(def.first))
         continue;
       loop_defs[i].emplace_back(def);
-      goto def_out;
+      goto def_next;
     }
     spilled_defs.emplace_back(def);
+def_next:;
   }
-def_out:
 
   for (const auto &use : ll.get_uses(this))
   {
@@ -640,11 +654,11 @@ def_out:
       if (!loops[loop_index].stmts.get(use.first))
         continue;
       loop_uses[i].emplace_back(use);
-      goto use_out;
+      goto use_next;
     }
     spilled_uses.emplace_back(use);
+use_next:;
   }
-use_out:
 
   for (size_t i = 0; i < loop_indices.size(); ++i)
   {
@@ -654,14 +668,13 @@ use_out:
     unsigned int loop_index = loop_indices[i];
 
     Bitset stmts = loops[loop_index].stmts;
-    stmts |= ll.stmts;
+    stmts &= ll.stmts;
 
     uint32_t hint = 0;
     uint32_t forbid = 0;
     for (const auto &use : loop_uses[i])
     {
-      if (stmt_info[use.first].func_call)
-      {
+      if (stmt_info[use.first].func_call) {
         hint |= reg_hint_caller_arg(use.second - 1);
         forbid |= reg_forbid_caller_arg(use.second - 1);
       }
@@ -691,14 +704,18 @@ use_out:
 
     uint32_t hint = 0;
     uint32_t forbid = 0;
-    if (stmt_info[use.first].func_call) {
-      hint |= reg_hint_caller_arg(use.second - 1);
-      forbid |= reg_forbid_caller_arg(use.second - 1);
-    }
     if (use.first == stmt_info.size() - 1) {
       assert(ll.local == 0);
       forbid |= reg_forbid_return_addr();
       hint |= reg_hint_return_addr();
+    }
+    if (stmt_info[use.first].func_call) {
+      forbid |= reg_forbid_caller_arg(use.second - 1);
+      hint |= reg_hint_caller_arg(use.second - 1);
+    }
+    if (func->stmts[use.first]->is_return()) {
+      forbid |= reg_forbid_return_val();
+      hint |= reg_hint_return_val();
     }
 
     buf.emplace_back(std::move(stmts), ll.local, ~0u,

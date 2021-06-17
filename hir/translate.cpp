@@ -183,7 +183,8 @@ void HirTrueCond::translate(
 void HirFalseCond::translate(
     MirFuncBuilder *builder, MirLabel label_t, MirLabel label_f)
 {
-  builder->add_statement(std::make_unique<MirJumpStmt>(label_f));
+  builder->add_statement(
+      std::make_unique<MirBranchStmt>(~0u, ~0u, label_f, MirLogicalOp::Eq));
 }
 
 void HirBinaryCond::translate(
@@ -243,7 +244,8 @@ void HirShortcutCond::translate(
     break;
   case HirShortcutOp::Or:
     lhs->translate(builder, label_t, middle);
-    builder->add_statement(std::make_unique<MirJumpStmt>(label_t));
+    builder->add_statement(
+        std::make_unique<MirBranchStmt>(~0u, ~0u, label_t, MirLogicalOp::Eq));
     builder->set_label(middle);
     rhs->translate(builder, label_t, label_f);
     break;

@@ -180,41 +180,44 @@ void AstReturnStmt::type_check(AstContext *ctx)
 
 void AstDeclStmt::type_check(AstContext *ctx)
 {
-  std::vector<unsigned int> shape;
-
-  for (auto &index : indices)
+  for (size_t i = 0; i < sym.size(); ++i)
   {
-    enforce_int(index->type_check(ctx));
-    int s = index->const_eval(ctx);
-    if (s <= 0) {
-      std::cerr << "error: negative size for array "
-                << sym
-                << " is not allowed"
-                << std::endl;
-      abort();
+    std::vector<unsigned int> shape;
+
+    for (auto &index : indices[i])
+    {
+      enforce_int(index->type_check(ctx));
+      int s = index->const_eval(ctx);
+      if (s <= 0) {
+        std::cerr << "error: negative size for array "
+                  << sym[i]
+                  << " is not allowed"
+                  << std::endl;
+        abort();
+      }
+      shape.emplace_back(static_cast<unsigned int>(s));
     }
-    shape.emplace_back(static_cast<unsigned int>(s));
+
+    const AstType *ty;
+    if (shape.size() == 0)
+      ty = AstType::mk_int(is_const);
+    else
+      ty = AstType::mk_array(is_const, std::move(shape));
+    ctx->def_set_type(def[i], ty);
+
+    if (indices[i].size() == 0 && is_const) {
+      assert(init[i] != nullptr);
+      init[i]->type_check(ctx);
+      auto values = init[i]->collect_const(
+          ctx, std::vector<unsigned int>());
+      assert(values.size() == 1 && values[0].first == 0);
+      ctx->def_set_value(def[i], values[0].second);
+      continue;
+    }
+
+    if (init[i] != nullptr)
+      init[i]->type_check(ctx);
   }
-
-  const AstType *ty;
-  if (shape.size() == 0)
-    ty = AstType::mk_int(is_const);
-  else
-    ty = AstType::mk_array(is_const, std::move(shape));
-  ctx->def_set_type(def, ty);
-
-  if (indices.size() == 0 && is_const) {
-    assert(init != nullptr);
-    init->type_check(ctx);
-    auto values = init->collect_const(
-        ctx, std::vector<unsigned int>());
-    assert(values.size() == 1 && values[0].first == 0);
-    ctx->def_set_value(def, values[0].second);
-    return;
-  }
-
-  if (init != nullptr)
-    init->type_check(ctx);
 }
 
 void AstAssignStmt::type_check(AstContext *ctx)
@@ -318,45 +321,93 @@ void AstFuncItem::type_check(AstContext *ctx)
 
 void AstDeclItem::type_check(AstContext *ctx)
 {
-  std::vector<unsigned int> shape;
-
-  for (auto &index : indices)
+  for (size_t i = 0; i < sym.size(); ++i)
   {
-    enforce_int(index->type_check(ctx));
-    int s = index->const_eval(ctx);
-    if (s <= 0) {
-      std::cerr << "error: negative size for array "
-                << sym
-                << " is not allowed"
-                << std::endl;
-      abort();
+    std::vector<unsigned int> shape;
+
+    for (auto &index : indices[i])
+    {
+      enforce_int(index->type_check(ctx));
+      int s = index->const_eval(ctx);
+      if (s <= 0) {
+        std::cerr << "error: negative size for array "
+                  << sym[i]
+                  << " is not allowed"
+                  << std::endl;
+        abort();
+      }
+      shape.emplace_back(static_cast<unsigned int>(s));
     }
-    shape.emplace_back(static_cast<unsigned int>(s));
+
+    const AstType *ty;
+    if (shape.size() == 0)
+      ty = AstType::mk_int(is_const);
+    else
+      ty = AstType::mk_array(is_const, std::move(shape));
+    ctx->def_set_type(def[i], ty);
+
+    if (indices[i].size() == 0 && is_const) {
+      assert(init[i] != nullptr);
+      init[i]->type_check(ctx);
+      auto values = init[i]->collect_const(
+          ctx, std::vector<unsigned int>());
+      assert(values.size() == 1 && values[0].first == 0);
+      ctx->def_set_value(def[i], values[0].second);
+      continue;
+    }
+
+    if (init[i] != nullptr)
+      init[i]->type_check(ctx);
   }
-
-  const AstType *ty;
-  if (shape.size() == 0)
-    ty = AstType::mk_int(is_const);
-  else
-    ty = AstType::mk_array(is_const, std::move(shape));
-  ctx->def_set_type(def, ty);
-
-  if (indices.size() == 0 && is_const) {
-    assert(init != nullptr);
-    init->type_check(ctx);
-    auto values = init->collect_const(
-        ctx, std::vector<unsigned int>());
-    assert(values.size() == 1 && values[0].first == 0);
-    ctx->def_set_value(def, values[0].second);
-    return;
-  }
-
-  if (init != nullptr)
-    init->type_check(ctx);
 }
 
 void AstCompUnit::type_check(AstContext *ctx)
 {
+  const AstType *ty_int = AstType::mk_int(false);
+  const AstType *ty_void = AstType::mk_void();
+  const AstType *ty_ptr =
+    AstType::mk_ptr(false, std::vector<unsigned int>());
+
+  ctx->def_set_type(
+      prelude_defs[0],
+      AstType::mk_func(ty_int,
+        std::vector<const AstType *>()));
+
+  ctx->def_set_type(
+      prelude_defs[1],
+      AstType::mk_func(ty_void,
+        std::vector<const AstType *> { ty_int }));
+
+  ctx->def_set_type(
+      prelude_defs[2],
+      AstType::mk_func(ty_int,
+        std::vector<const AstType *>()));
+
+  ctx->def_set_type(
+      prelude_defs[3],
+      AstType::mk_func(ty_void,
+        std::vector<const AstType *> { ty_int }));
+
+  ctx->def_set_type(
+      prelude_defs[4],
+      AstType::mk_func(ty_int,
+        std::vector<const AstType *> { ty_ptr }));
+
+  ctx->def_set_type(
+      prelude_defs[5],
+      AstType::mk_func(ty_void,
+        std::vector<const AstType *> { ty_int, ty_ptr }));
+
+  ctx->def_set_type(
+      prelude_defs[6],
+      AstType::mk_func(ty_void,
+        std::vector<const AstType *> { ty_int }));
+
+  ctx->def_set_type(
+      prelude_defs[7],
+      AstType::mk_func(ty_void,
+        std::vector<const AstType *> { ty_int }));
+
   for (auto &item : items)
     item->type_check(ctx);
 }

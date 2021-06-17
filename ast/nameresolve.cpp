@@ -1,6 +1,7 @@
 #include <iostream>
 #include "ast.h"
 #include "context.h"
+#include "../lexer/token.h"
 
 void AstBinaryExpr::name_resolve(AstContext *ctx)
 {
@@ -79,18 +80,22 @@ void AstReturnStmt::name_resolve(AstContext *ctx)
 
 void AstDeclStmt::name_resolve(AstContext *ctx)
 {
-  for (auto &index : indices)
-    index->name_resolve(ctx);
+  for (size_t i = 0; i < sym.size(); ++i)
+  {
+    for (auto &index : indices[i])
+      index->name_resolve(ctx);
 
-  if (!(def = ctx->def_insert(sym)).is_valid()) {
-    std::cerr << "error: redefinition of variable "
-              << sym
-              << std::endl;
-    abort();
+    def.emplace_back(ctx->def_insert(sym[i]));
+    if (!def.back().is_valid()) {
+      std::cerr << "error: redefinition of variable "
+                << sym[i]
+                << std::endl;
+      abort();
+    }
+
+    if (init[i] != nullptr)
+      init[i]->name_resolve(ctx);
   }
-
-  if (init != nullptr)
-    init->name_resolve(ctx);
 }
 
 void AstAssignStmt::name_resolve(AstContext *ctx)
@@ -124,15 +129,31 @@ void AstIfElseStmt::name_resolve(AstContext *ctx)
 
 void AstWhileStmt::name_resolve(AstContext *ctx)
 {
+  ctx->loop_push();
+
   cond->name_resolve(ctx);
   body->name_resolve(ctx);
+
+  ctx->loop_pop();
 }
 
 void AstBreakStmt::name_resolve(AstContext *ctx)
-{ /* nothing */ }
+{
+  if (!ctx->loop_check()) {
+    std::cerr << "error: cannot `break` outside loops"
+              << std::endl;
+    abort();
+  }
+}
 
 void AstContinueStmt::name_resolve(AstContext *ctx)
-{ /* nothing */ }
+{
+  if (!ctx->loop_check()) {
+    std::cerr << "error: cannot `continue` outside loops"
+              << std::endl;
+    abort();
+  }
+}
 
 void AstEmptyStmt::name_resolve(AstContext *ctx)
 { /* nothing */ }
@@ -160,6 +181,13 @@ void AstFuncItem::name_resolve(AstContext *ctx)
     abort();
   }
 
+  if (args.size() > 8) {
+    std::cerr << "error: too many arguments of function "
+              << sym
+              << std::endl;
+    abort();
+  }
+
   ctx->scope_push();
 
   for (auto &arg : args)
@@ -173,23 +201,59 @@ void AstFuncItem::name_resolve(AstContext *ctx)
 
 void AstDeclItem::name_resolve(AstContext *ctx)
 {
-  for (auto &index : indices)
-    index->name_resolve(ctx);
+  for (size_t i = 0; i < sym.size(); ++i)
+  {
+    for (auto &index : indices[i])
+      index->name_resolve(ctx);
 
-  if (!(def = ctx->def_insert(sym)).is_valid()) {
-    std::cerr << "redefinition of variable "
-              << sym
-              << std::endl;
-    abort();
+    def.emplace_back(ctx->def_insert(sym[i]));
+    if (!def.back().is_valid()) {
+      std::cerr << "redefinition of variable "
+                << sym[i]
+                << std::endl;
+      abort();
+    }
+
+    if (init[i] != nullptr)
+      init[i]->name_resolve(ctx);
   }
-
-  if (init != nullptr)
-    init->name_resolve(ctx);
 }
 
 void AstCompUnit::name_resolve(AstContext *ctx)
 {
   ctx->scope_push();
+
+  prelude_defs.emplace_back(
+      ctx->def_insert(Symbol(Token::GetInt)));
+  assert(prelude_defs.back().is_valid());
+
+  prelude_defs.emplace_back(
+      ctx->def_insert(Symbol(Token::PutInt)));
+  assert(prelude_defs.back().is_valid());
+
+  prelude_defs.emplace_back(
+      ctx->def_insert(Symbol(Token::GetCh)));
+  assert(prelude_defs.back().is_valid());
+
+  prelude_defs.emplace_back(
+      ctx->def_insert(Symbol(Token::PutCh)));
+  assert(prelude_defs.back().is_valid());
+
+  prelude_defs.emplace_back(
+      ctx->def_insert(Symbol(Token::GetArray)));
+  assert(prelude_defs.back().is_valid());
+
+  prelude_defs.emplace_back(
+      ctx->def_insert(Symbol(Token::PutArray)));
+  assert(prelude_defs.back().is_valid());
+
+  prelude_defs.emplace_back(
+      ctx->def_insert(Symbol(Token::SysyStartTime)));
+  assert(prelude_defs.back().is_valid());
+
+  prelude_defs.emplace_back(
+      ctx->def_insert(Symbol(Token::SysyStopTime)));
+  assert(prelude_defs.back().is_valid());
 
   for (auto &item : items)
     item->name_resolve(ctx);

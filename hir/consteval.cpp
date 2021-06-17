@@ -241,6 +241,7 @@ std::unique_ptr<HirExpr> HirBinaryExpr::const_eval(void)
     case HirBinaryOp::Ne:
       std::swap(lhs, rhs);
       break;
+    case HirBinaryOp::Sub:
     case HirBinaryOp::Div:
     case HirBinaryOp::Mod:
       break;

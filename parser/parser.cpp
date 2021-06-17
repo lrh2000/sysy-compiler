@@ -81,6 +81,29 @@ std::unique_ptr<AstCallExpr> Parser::parse_call_expr(Symbol name)
 {
   std::vector<std::unique_ptr<AstExpr>> args;
 
+  if (name.id == Token::StartTime
+      || name.id == Token::StopTime) {
+    args.emplace_back(
+        std::make_unique<AstLiteralExpr>(bump().location.get_line()));
+    check_bump_or_err(Token::RightRound);
+
+    TokenKind tok;
+    switch (name.id)
+    {
+    case Token::StartTime:
+      tok = Token::SysyStartTime;
+      break;
+    case Token::StopTime:
+      tok = Token::SysyStopTime;
+      break;
+    default:
+      __builtin_unreachable();
+    }
+
+    return
+      std::make_unique<AstCallExpr>(Symbol(tok), std::move(args));
+  }
+
   bump();
   if (!expect(Token::RightRound)) {
     for (;;)
@@ -401,19 +424,34 @@ std::unique_ptr<AstDeclStmt> Parser::parse_decl_stmt(void)
     __builtin_unreachable();
   }
 
-  Symbol name = check_bump_ident();
-  auto indices = parse_indices();
-  std::unique_ptr<AstInit> init = nullptr;
-  if (expect(Token::Assign)) {
-    bump();
-    init = parse_init();
-  } else if (is_const) {
-    expected_but_found();
+  std::vector<Symbol> names;
+  std::vector<std::vector<std::unique_ptr<AstExpr>>> indices;
+  std::vector<std::unique_ptr<AstInit>> inits;
+
+  for (;;)
+  {
+    names.emplace_back(check_bump_ident());
+    indices.emplace_back(parse_indices());
+
+    std::unique_ptr<AstInit> init = nullptr;
+    if (expect(Token::Assign)) {
+      bump();
+      init = parse_init();
+    } else if (is_const) {
+      expected_but_found();
+    }
+    inits.emplace_back(std::move(init));
+
+    if (expect(Token::Comma))
+      bump();
+    else
+      break;
   }
   check_bump_or_err(Token::Semicolon);
 
   return std::make_unique<AstDeclStmt>(
-        is_const, name, std::move(indices), std::move(init));
+        is_const, std::move(names),
+        std::move(indices), std::move(inits));
 }
 
 std::unique_ptr<AstStmt> Parser::parse_if_stmt(void)
@@ -577,17 +615,35 @@ std::unique_ptr<AstFuncArg> Parser::parse_func_arg(void)
 std::unique_ptr<AstDeclItem>
 Parser::parse_decl_item(bool is_const, Symbol name)
 {
-  auto indices = parse_indices();
-  std::unique_ptr<AstInit> init = nullptr;
-  if (expect(Token::Assign)) {
-    bump();
-    init = parse_init();
-  } else if (is_const) {
-    expected_but_found();
+  std::vector<Symbol> names;
+  std::vector<std::vector<std::unique_ptr<AstExpr>>> indices;
+  std::vector<std::unique_ptr<AstInit>> inits;
+
+  names.emplace_back(name);
+  for (;;)
+  {
+    indices.emplace_back(parse_indices());
+
+    std::unique_ptr<AstInit> init = nullptr;
+    if (expect(Token::Assign)) {
+      bump();
+      init = parse_init();
+    } else if (is_const) {
+      expected_but_found();
+    }
+    inits.emplace_back(std::move(init));
+
+    if (expect(Token::Comma))
+      bump();
+    else
+      break;
+    names.emplace_back(check_bump_ident());
   }
   check_bump_or_err(Token::Semicolon);
+
   return std::make_unique<AstDeclItem>(
-        is_const, name, std::move(indices), std::move(init));
+        is_const, std::move(names),
+        std::move(indices), std::move(inits));
 }
 
 std::unique_ptr<AstFuncItem>
